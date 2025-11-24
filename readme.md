@@ -1,6 +1,9 @@
 ## GEE_UBM: Utah Soil Water Balance Model
 GEE_UBM is a Python package for performing spatially distributed Soil Water Balance Utah Basin Model (UBM) calculations entirely within Google Earth Engine (GEE). It provides a standardized workflow to fetch hydrological datasets (Precipitation, Snowmelt, ET, Soil Properties), harmonize them to a common grid, and run various "Bucket Model" scenarios to estimate Recharge, Runoff, and Soil Moisture dynamics.
 
+> This is a work-in-progress. The module provides the necessary tools for running the UBM model but does not 
+> contain any working files for the actual calculation of the UBM model. I will be adding this soon.
+
 ## 📦 Installation
 Since this is currently a private repository, install it directly from GitHub:
 
