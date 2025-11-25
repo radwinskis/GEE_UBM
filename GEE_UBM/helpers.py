@@ -41,8 +41,9 @@ def harmonize_to_target(source_image, target_proj):
 
 def build_model_ready_collection(timeseries_collections_list, static_images_list, verbose=False):
     """
-    Takes a Python list of time-series GenericCollections and a Python
-    list of static ee.Images, and builds a 100% server-side workflow.
+    Takes a Python list of time-series GenericCollection image collections and a Python
+    list of static ee.Images, and builds a combined GenericCollection image collection, 
+    where each band of each image corresponds to the provided input collections/images.
     
     Args:
         timeseries_collections_list (list of GenericCollection objects): List of time-series collections.
