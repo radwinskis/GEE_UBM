@@ -234,6 +234,20 @@ class InputCollections:
             UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
                                 .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
+        elif name == 'UGS_Geo_K_daily':
+            # Assuming original units of m/day, converted to mm/day
+            image = ee.Image("users/paulinkenbrandt/Geol_K")
+            native_proj = image.projection()
+            UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
+            return UGS_Geo_K
+        elif name == 'UGS_Geo_K_monthly':
+            # Assuming original units of m/day, converted to mm/day
+            image = ee.Image("users/paulinkenbrandt/Geol_K")
+            native_proj = image.projection()
+            UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).multiply(ee.Image(30.4375)).max(ee.Image(0)).rename('Geo_K')
+            return UGS_Geo_K
         elif name == 'UGS_wiltingPoint':
             # Assuming original units of %, multiplying by soil thickness to get mm of water equivalent
             image = ee.Image("users/paulinkenbrandt/WiltPoint")
