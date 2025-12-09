@@ -13,22 +13,40 @@ def Modified_2_UBM_Step_Function(current_image, previous_state_list):
 
     Soil_Water_End_Of_Previous_Timestep = previous_output_image.select('Soil_Water_End_Of_Previous_Timestep')
 
+    legacy_inputs = False
 
     # Define inputs from `current_image`
-    soil_porosity = current_image.select('soil_porosity')
-    soil_thickness = current_image.select('soil_thickness')
-    field_capacity = current_image.select('field_capacity')
-    wilting_point = current_image.select('wilting_point')
-    geo_K = current_image.select('Geo_K')
-    precipitation = current_image.select('precipitation')
-    snowmelt = current_image.select('snowmelt')
-    ET = current_image.select('ET')
-    Soil_Water_Profile_Beginning_of_Timestep = current_image.select('Soil_Water_Beginning_of_Current_Timestep')
+    if legacy_inputs == True:
+        # Define inputs from `current_image`
+        soil_porosity = current_image.select('soil_porosity')
+        soil_thickness = current_image.select('soil_thickness')
+        field_capacity = current_image.select('field_capacity')
+        wilting_point = current_image.select('wilting_point')
+        geo_K = current_image.select('Geo_K')
+        precipitation = current_image.select('precipitation')
+        snowmelt = current_image.select('snowmelt')
+        ET = current_image.select('AET')
+        Soil_Water_Profile_Beginning_of_Timestep = current_image.select('Soil_Water_Beginning_of_Current_Timestep')
+        zero_image = precipitation.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
+        # 1) Calculate Available Water in mm of water
+        Available_Water_Initial = precipitation.add(snowmelt).add(Soil_Water_Profile_Beginning_of_Timestep)
+    
+    elif legacy_inputs == False:
+        # Define inputs from `current_image`
+        soil_porosity = current_image.select('soil_porosity')
+        soil_thickness = current_image.select('soil_thickness')
+        field_capacity = current_image.select('field_capacity')
+        wilting_point = current_image.select('wilting_point')
+        geo_K = current_image.select('Geo_K')
+        # precipitation = current_image.select('precipitation')
+        # snowmelt = current_image.select('snowmelt')
+        precip_and_snowmelt = current_image.select('precip_and_snowmelt_input')
+        ET = current_image.select('AET')
+        Soil_Water_Profile_Beginning_of_Timestep = current_image.select('Soil_Water_Beginning_of_Current_Timestep')
+        zero_image = precip_and_snowmelt.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
+        # 1) Calculate Available Water in mm of water
+        Available_Water_Initial = precip_and_snowmelt.add(Soil_Water_Profile_Beginning_of_Timestep)
 
-    zero_image = precipitation.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
-
-    # 1) Calculate Available Water in mm of water
-    Available_Water_Initial = precipitation.add(snowmelt).add(Soil_Water_Profile_Beginning_of_Timestep)
     ET_offset = ET.min(Available_Water_Initial) #If ET is larger than available water, account for this so we don't get a negative value
     Available_Water = Available_Water_Initial.subtract(ET_offset)
     

@@ -1,53 +1,19 @@
 import ee
 from RadGEEToolbox import LandsatCollection, GetPalette, GenericCollection
 
-### --- Shapefiles --- ###
-GSL_basin = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Merged_GSL_Basin_Watershed")
-Castle_valley =  ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Castle_Valley_Watershed")
-Milford = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Milford_Watershed")
-Sanpete = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Sanpete_Watershed")
-Utah_Regional_Boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary")
-
-### --- Helper Functions --- ###
-
-def add_day(image):
-    return image.set('day_of_month', image.date().get('day'))
-
-def meters_to_mm_conversion(image):
-    return image.multiply(ee.Image(1000)).copyProperties(image).set('system:time_start', image.get('system:time_start'), 'Date_Filter', image.get('Date_Filter'))
-
-# https://data.isric.org/geonetwork/srv/api/records/f36117ea-9be5-4afd-bb7d-7a3e77bf392a
-# https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0169748
-# Units = cm originaly, converted to mm depth
-### ISRIC has best coverage of Utah, but there is disagreement with gNATSGO in some areas - ISRIC generally shows deeper soils
-UT_DepthToBedrock = ee.Image("projects/ut-gee-ugs-bsf-dev/assets/UT_regional_soil_depth_to_bedrock_cm_ISRIC").multiply(ee.Image(10)).clip(Utah_Regional_Boundary).rename('soil_thickness')
-
-gNATSGO_tk0_999a = ee.ImageCollection('projects/sat-io/open-datasets/gNATSGO/raster/tk0_999a').mosaic().multiply(ee.Image(10)).clip(Utah_Regional_Boundary).rename('soil_thickness')
-
-# Setting a notebook wide variable for which raster to use as `soil_thickness`
-# this will allow for easily changing over to a new soil_thickness raster for conversions down the line
-soil_thickness_raster = UT_DepthToBedrock
-
-def volume_fraction_to_mm_water(image):
-    return image.multiply(soil_thickness_raster).copyProperties(image).set('system:time_start', image.get('system:time_start'))
-
-def ERA5_soil_moisture_mean(image):
-    expression = '(b("volumetric_soil_water_layer_1")+b("volumetric_soil_water_layer_2")+b("volumetric_soil_water_layer_3")+b("volumetric_soil_water_layer_4"))/4'
-    return ee.Image(image.expression(expression).copyProperties(image).set('system:time_start', image.get('system:time_start'))).rename('Soil_Water_End_of_Previous_Timestep')
-
-def ECMWF_soil_moisture_mean(image):
-    expression = '(b("volumetric_soil_moisture_sol1")+b("volumetric_soil_moisture_sol2")+b("volumetric_soil_moisture_sol3")+b("volumetric_soil_moisture_sol4"))/4'
-    return ee.Image(image.expression(expression).copyProperties(image).set('system:time_start', image.get('system:time_start'))).rename('Soil_Water_End_of_Previous_Timestep')
-
-### --- Input Collections Module Class --- ###
-
 class InputCollections: 
     """
     Class to retrieve defined static rasters and time-varying collections for hydrological modeling.
 
     All units are converted to mm where applicable. Collections are either daily or monthly, depending on source data.
 
+    All rasters with a resolution less than 1 km have been downsampled to 1 km resolution to match the coarsest temporally varying input data.
+
         Output collections include:
+        - Soil Thickness Rasters:
+            - ISRIC Soil Thickness to Bedrock
+            - gNATSGO Soil Thickness to Bedrock
+            - gNATSGO_filled Soil Thickness to Bedrock (gNATSGO gaps filled with ISRIC values where the ISRIC fill values are divided by 10)
         - Static Rasters:
             - UGS Porosity
             - HiHydroSoil Porosity
@@ -111,14 +77,82 @@ class InputCollections:
         soil_thickness_raster (ee.Image): Raster image representing soil thickness in mm.
     
     """
-    def __init__(self, start_date, end_date, soil_thickness_raster=soil_thickness_raster):
+    _shapefiles = None
+    
+    @classmethod
+    def _get_shapefiles(cls):
+        """Lazy load shapefiles only when needed."""
+        if cls._shapefiles is None:
+            cls._shapefiles = {
+                'GSL_basin': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Merged_GSL_Basin_Watershed"),
+                'Castle_valley': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Castle_Valley_Watershed"),
+                'Milford': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Milford_Watershed"),
+                'Sanpete': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Sanpete_Watershed"),
+                'Utah_Regional_Boundary': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary"),
+            }
+        return cls._shapefiles
+
+    @classmethod
+    def _get_soil_thickness_raster(cls, name):
+        """Retrieve the soil thickness raster. Each soil thickness raster is downsampled to 1 km resolution."""
+        Utah_Regional_Boundary = cls._get_shapefiles()['Utah_Regional_Boundary']
+        if name == 'ISRIC':
+            image = ee.Image("projects/ut-gee-ugs-bsf-dev/assets/UT_regional_soil_depth_to_bedrock_cm_ISRIC")
+            native_proj = image.projection()
+            image = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000)
+            return image.multiply(ee.Image(10)).clip(Utah_Regional_Boundary).rename('soil_thickness')
+        elif name == 'gNATSGO':
+            col = ee.ImageCollection('projects/sat-io/open-datasets/gNATSGO/raster/tk0_999a')
+            native_proj = col.first().projection()
+            # col = col.mosaic().setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+            #                     .reproject(crs=native_proj, scale=1000)
+            col = col.mosaic().setDefaultProjection(native_proj).resample('bilinear')\
+                                .reproject(crs=native_proj, scale=1000)
+            return col.multiply(ee.Image(10)).clip(Utah_Regional_Boundary).rename('soil_thickness')
+        elif name == 'gNATSGO_filled':
+            # Fill gNATSGO gaps with ISRIC values
+            isric_image = cls._get_soil_thickness_raster('ISRIC').divide(ee.Image(10)) 
+            gNATSGO_image = cls._get_soil_thickness_raster('gNATSGO')
+            filled_image = gNATSGO_image.unmask(isric_image)
+            return filled_image.rename('soil_thickness')
+        else:
+            raise ValueError(f"Soil thickness raster '{name}' not found. Available options are: 'ISRIC', 'gNATSGO', 'gNATSGO_filled'.")
+    
+    def __init__(self, start_date, end_date, soil_thickness_raster=None):
         self.start_date = start_date
         self.end_date = end_date
-        self.soil_thickness_raster = soil_thickness_raster
+        self.Utah_Regional_Boundary = self._get_shapefiles()['Utah_Regional_Boundary']
+        if soil_thickness_raster is None:
+            self.soil_thickness_raster = self._get_soil_thickness_raster('ISRIC')
+        elif isinstance(soil_thickness_raster, str):
+            if soil_thickness_raster in ['ISRIC', 'gNATSGO', 'gNATSGO_filled']:
+                self.soil_thickness_raster = self._get_soil_thickness_raster(soil_thickness_raster)
+            else:
+                raise ValueError(f"Soil thickness raster '{soil_thickness_raster}' not found. Available options are: 'ISRIC', 'gNATSGO', 'gNATSGO_filled'.")
+        else:
+            self.soil_thickness_raster = soil_thickness_raster
+
+    def _add_day(self, image):
+        return image.set('day_of_month', image.date().get('day'))
+
+    def _meters_to_mm_conversion(self, image):
+        return image.multiply(ee.Image(1000)).copyProperties(image).set('system:time_start', image.get('system:time_start'), 'Date_Filter', image.get('Date_Filter'))
+
+    def _volume_fraction_to_mm_water(self, image):
+        return image.multiply(self.soil_thickness_raster).copyProperties(image).set('system:time_start', image.get('system:time_start'))
+
+    def _ERA5_soil_moisture_mean(self, image):
+        expression = '(b("volumetric_soil_water_layer_1")+b("volumetric_soil_water_layer_2")+b("volumetric_soil_water_layer_3")+b("volumetric_soil_water_layer_4"))/4'
+        return ee.Image(image.expression(expression).copyProperties(image).set('system:time_start', image.get('system:time_start'))).rename('Soil_Water_End_of_Previous_Timestep')
+
+    def _ECMWF_soil_moisture_mean(self, image):
+        expression = '(b("volumetric_soil_moisture_sol1")+b("volumetric_soil_moisture_sol2")+b("volumetric_soil_moisture_sol3")+b("volumetric_soil_moisture_sol4"))/4'
+        return ee.Image(image.expression(expression).copyProperties(image).set('system:time_start', image.get('system:time_start'))).rename('Soil_Water_End_of_Previous_Timestep')
 
     def get_static_raster(self, name):
         """
-        Retrieves a static raster image by name.
+        Retrieves a static raster image by name. All static rasters are resampled to 1 km resolution.
         Options: 'UGS_porosity', 'HiHydroSoilPorosity', 'POLARIS_porosity', 'UGS_fieldCap', 
                  'HiHydroSoilFieldCap', 'OpenLandMapFieldCap', 'UGS_BMC_K', 
                  'UGS_Geo_K', 'UGS_wiltingPoint', 'HiHydroSoilWiltPoint'
@@ -128,24 +162,40 @@ class InputCollections:
             ee.Image: The requested static raster image.
         """
         if name == 'UGS_porosity':
-            UGS_porosity = ee.Image("users/paulinkenbrandt/porosity").clip(Utah_Regional_Boundary).rename('soil_porosity')
+            image = ee.Image("users/paulinkenbrandt/porosity")
+            native_proj = image.projection()
+            image = image.setDefaultProjection(native_proj)\
+                     .reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                     .reproject(crs=native_proj, scale=1000)
+            UGS_porosity = image.clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return UGS_porosity
         elif name == 'HiHydroSoilPorosity':
             # https://gee-community-catalog.org/projects/hihydro_soil/
             # Different images for different depths
             # Units = % or m3/m3
-            HiHydroSoilPorosity = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcsat").mean().clip(Utah_Regional_Boundary).rename('soil_porosity')
+            col = HiHydroSoilPorosity = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcsat")
+            native_proj = col.first().projection()
+            HiHydroSoilPorosity = col.mean().multiply(0.0001).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                    .reproject(crs=native_proj, scale=1000).unmask(0.5).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return HiHydroSoilPorosity
         elif name == 'POLARIS_porosity':
             # https://gee-community-catalog.org/projects/polaris/
             # Different images for different depths? Need to examine more closely
             # Units = m3/m3 or %
-            POLARIS_porosity = ee.ImageCollection('projects/sat-io/open-datasets/polaris/theta_s_mean').mean().clip(Utah_Regional_Boundary).rename('soil_porosity')
+            col = ee.ImageCollection('projects/sat-io/open-datasets/polaris/theta_s_mean')
+            native_proj = col.first().projection()
+            # POLARIS_porosity = col.mean().setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
+            POLARIS_porosity = col.mean().setDefaultProjection(native_proj).resample('bilinear')\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return POLARIS_porosity
         elif name == 'UGS_fieldCap':
             # Likely in volumetric percentage, multiply by soil thickness for mm of water
             # Converted to mm of water
-            UGS_fieldCap = ee.Image("users/paulinkenbrandt/fieldCap").clip(Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
+            image = ee.Image("users/paulinkenbrandt/fieldCap")
+            native_proj = image.projection()
+            UGS_fieldCap = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return UGS_fieldCap
         elif name == 'HiHydroSoilFieldCap':
             # https://gee-community-catalog.org/projects/hihydro_soil/
@@ -153,28 +203,43 @@ class InputCollections:
             # original Units = % or m3/m3
             # Using mean of profile, since a profile option is not provided
             # Converted to mm of water by multipying against soil thickness
-            HiHydroSoilFieldCap = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcpf2").mean().clip(Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
+            col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcpf2")
+            native_proj = col.first().projection()
+            HiHydroSoilFieldCap = col.mean().multiply(0.0001).setDefaultProjection(native_proj).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return HiHydroSoilFieldCap
         elif name == 'OpenLandMapFieldCap':
-            # https://gee-community-catalog.org/projects/polaris/
+            # https://developers.google.com/earth-engine/datasets/catalog/OpenLandMap_SOL_SOL_WATERCONTENT-33KPA_USDA-4B1C_M_v01
             # different bands for different depths
             # calculating the mean for different depths
             # original units = %
             # converting to mm of water by multiplying against soil thickness
-            OpenLandMapFieldCap = ee.Image('OpenLandMap/SOL/SOL_WATERCONTENT-33KPA_USDA-4B1C_M/v01')\
-                .expression('(b("b0")+b("b10")+b("b30")+b("b60")+b("b100")+b("b200"))/6').clip(Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
+            col = ee.Image('OpenLandMap/SOL/SOL_WATERCONTENT-33KPA_USDA-4B1C_M/v01')
+            native_proj = col.projection()
+            OpenLandMapFieldCap = col.expression('(b("b0")+b("b10")+b("b30")+b("b60")+b("b100")+b("b200"))/6').divide(100)\
+                .setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return OpenLandMapFieldCap
         elif name == 'UGS_BMC_K':
             # Assuming original units of m/day, converted to mm/day
-            UGS_BMC_K = ee.Image("users/paulinkenbrandt/BMC_K").clip(Utah_Regional_Boundary).multiply(ee.Image(1000)).rename('Geo_K')
+            image = ee.Image("users/paulinkenbrandt/BMC_K")
+            native_proj = image.projection()
+            UGS_BMC_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             return UGS_BMC_K
         elif name == 'UGS_Geo_K':
             # Assuming original units of m/day, converted to mm/day
-            UGS_Geo_K = ee.Image("users/paulinkenbrandt/Geol_K").clip(Utah_Regional_Boundary).multiply(ee.Image(1000)).rename('Geo_K')
+            image = ee.Image("users/paulinkenbrandt/Geol_K")
+            native_proj = image.projection()
+            UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
         elif name == 'UGS_wiltingPoint':
             # Assuming original units of %, multiplying by soil thickness to get mm of water equivalent
-            UGS_wiltingPoint = ee.Image("users/paulinkenbrandt/WiltPoint").clip(Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
+            image = ee.Image("users/paulinkenbrandt/WiltPoint")
+            native_proj = image.projection()
+            UGS_wiltingPoint = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             return UGS_wiltingPoint
         elif name == 'HiHydroSoilWiltPoint':
             # https://gee-community-catalog.org/projects/hihydro_soil/
@@ -182,7 +247,10 @@ class InputCollections:
             # Units = % or m3/m3
             # Using mean of profile, since a profile option is not provided
             # Converted to mm of water by multipying against soil thickness
-            HiHydroSoilWiltPoint = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcpf4-2").mean().clip(Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
+            col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcpf4-2")
+            native_proj = col.first().projection()
+            HiHydroSoilWiltPoint = col.mean().multiply(0.0001).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
+                                .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             return HiHydroSoilWiltPoint
         else:
             raise ValueError(f"Static raster '{name}' not found. Available options are: 'UGS_porosity', 'HiHydroSoilPorosity', 'POLARIS_porosity', 'UGS_fieldCap', 'HiHydroSoilFieldCap', 'OpenLandMapFieldCap', 'UGS_BMC_K', 'UGS_Geo_K', 'UGS_wiltingPoint', 'HiHydroSoilWiltPoint'.")
@@ -203,7 +271,7 @@ class InputCollections:
             # 5.4 km pixel size
             # Units of mm/day
             PRISM_daily_precip = GenericCollection(collection=ee.ImageCollection("OREGONSTATE/PRISM/ANd").select(['ppt']), start_date=self.start_date, end_date=self.end_date)\
-                                                                                            .mask_to_polygon(Utah_Regional_Boundary).band_rename('ppt', 'precipitation')
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('ppt', 'precipitation')
             return PRISM_daily_precip
         elif name == 'PRISM_monthly_precip':
             # https://developers.google.com/earth-engine/datasets/catalog/OREGONSTATE_PRISM_AN81m
@@ -218,7 +286,7 @@ class InputCollections:
             # 1 km pixel size
             # Units of mm/day
             DAYMET_daily_precip = GenericCollection(collection=ee.ImageCollection("NASA/ORNL/DAYMET_V4").select(['prcp']), start_date=self.start_date, end_date=self.end_date)\
-                                    .mask_to_polygon(Utah_Regional_Boundary).band_rename('prcp', 'precipitation')
+                                    .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('prcp', 'precipitation')
             return DAYMET_daily_precip
         elif name == 'DAYMET_monthly_precip':
             # https://developers.google.com/earth-engine/datasets/catalog/NASA_ORNL_DAYMET_V4
@@ -232,7 +300,7 @@ class InputCollections:
             # 4.5 km pixel size
             # Units of mm/day
             GRIDMET_daily_precip = GenericCollection(collection=ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").select(['pr']), start_date=self.start_date, end_date=self.end_date)\
-                                    .mask_to_polygon(Utah_Regional_Boundary).band_rename('pr', 'precipitation')
+                                    .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('pr', 'precipitation')
             return GRIDMET_daily_precip
         elif name == 'GRIDMET_monthly_precip':
             # https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_GRIDMET
@@ -246,7 +314,7 @@ class InputCollections:
             # 5.5 km pixel size
             # Units of mm/day
             CHIIRPS_daily_precip = GenericCollection(collection=ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY").select(['precipitation']), start_date=self.start_date, end_date=self.end_date)\
-                                    .mask_to_polygon(Utah_Regional_Boundary)
+                                    .mask_to_polygon(self.Utah_Regional_Boundary)
             return CHIIRPS_daily_precip
         elif name == 'CHIIRPS_monthly_precip':
             # https://developers.google.com/earth-engine/datasets/catalog/UCSB-CHG_CHIRPS_DAILY
@@ -273,8 +341,8 @@ class InputCollections:
             # oroginal units of meters of water equivalent / day
             # Units converted to mm/day
             ERA5_SnowMelt = GenericCollection(collection=ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['snowmelt_sum']), start_date=self.start_date, end_date=self.end_date)\
-                                                                                            .mask_to_polygon(Utah_Regional_Boundary)
-            ERA5_SnowMelt = GenericCollection(collection=ERA5_SnowMelt.collection.map(meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date).band_rename('snowmelt_sum', 'snowmelt')
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary)
+            ERA5_SnowMelt = GenericCollection(collection=ERA5_SnowMelt.collection.map(self._meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date).band_rename('snowmelt_sum', 'snowmelt')
             return ERA5_SnowMelt
         elif name == 'ERA5_monthly_SnowMelt':
             # https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_DAILY_AGGR
@@ -301,6 +369,28 @@ class InputCollections:
         else:
             raise ValueError(f"Snowmelt collection '{name}' not found. Available options are: 'ERA5_daily_SnowMelt', 'ERA5_monthly_SnowMelt', 'SMAP_daily_SnowMelt', 'SMAP_monthly_SnowMelt'.")
         
+    def get_precip_and_snowmelt(self, name):
+        """
+        Retrieves combined snowmelt and precipitation collection by name, with a band named 'precip_and_snowmelt_input'.
+        Options: 'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly'
+
+        Args:
+            name (str): Name of the combined collection to retrieve.
+        Returns:
+            Image Collection (GenericCollection): The requested combined collection as RadGEEToolbox GenericCollection object.
+        """
+        if name == 'DAYMET_SNODAS_combined_inputs_monthly':
+            # Combining DAYMET monthly precipitation with SNODAS monthly snowmelt
+            DAYMET_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_DAYMET_PRECIP_PLUS_SNOWMELT_1KM'),
+                                                           start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
+            return DAYMET_SNODAS_water_inputs
+        elif name == 'PRISM_SNODAS_combined_inputs_monthly':
+            PRISM_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_5KM'),
+                                                           start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
+            return PRISM_SNODAS_water_inputs
+        else:
+            raise ValueError(f"Combined Precipitation and Snowmelt collection '{name}' not found. Available options are: 'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly'.")
+
     def get_PET(self, name):
         """
         Retrieves a Potential Evapotranspiration (PET) collection by name.
@@ -317,7 +407,7 @@ class InputCollections:
             # Units of mm/day
              # Daily alfalfa reference evapotranspiration
             GRIDMET_daily_PET = GenericCollection(collection=ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").select(['etr']), start_date=self.start_date, end_date=self.end_date)\
-                                                                                            .mask_to_polygon(Utah_Regional_Boundary).band_rename('etr', 'PET')
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('etr', 'PET')
             return GRIDMET_daily_PET
         elif name == 'GRIDMET_monthly_PET':
             # https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_GRIDMET
@@ -334,8 +424,8 @@ class InputCollections:
             # units of meters of water equivalent
             # Units converted to mm/day
             ERA5_PET = GenericCollection(ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['potential_evaporation_sum']), start_date=self.start_date, end_date=self.end_date)\
-                                                                                            .mask_to_polygon(Utah_Regional_Boundary).band_rename('potential_evaporation_sum', 'PET')
-            ERA5_PET = GenericCollection(collection=ERA5_PET.collection.map(meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date)
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('potential_evaporation_sum', 'PET')
+            ERA5_PET = GenericCollection(collection=ERA5_PET.collection.map(self._meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date)
             return ERA5_PET
         elif name == 'ERA5_monthly_PET':
             # https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_DAILY_AGGR
@@ -348,10 +438,10 @@ class InputCollections:
             return ERA5_monthly_PET
         else:
             raise ValueError(f"PET collection '{name}' not found. Available options are: 'GRIDMET_daily_PET', 'GRIDMET_monthly_PET', 'ERA5_daily_PET', 'ERA5_monthly_PET'.")
-        
+    #### I WILL WANT TO REDUCE THE RESOLUTION TO 1KM IF THIS FIXED ###
     def get_AET(self, name):
         """
-        Retrieves an Actual Evapotranspiration (AET) collection by name.
+        Retrieves an Actual Evapotranspiration (AET) collection by name. All Open_ET collections are resampled to 1 km resolution.
         Options: 'ERA5_daily_ET', 'ERA5_monthly_ET', 'MODIS_ET', 'MODIS_monthly_ET',
                  'OPEN_ET_DisALEXI', 'OPEN_ET_ensemble', 'OPEN_ET_PTJPL', 'OPEN_ET_SIMS',
                  'OPEN_ET_SSEBOP', 'OPEN_ET_EEMETRIC', 'OPEN_ET_GEESEBAL'
@@ -366,8 +456,8 @@ class InputCollections:
             # units of meters of water equivalent
             # Units converted to mm/day
             ERA5_ET = GenericCollection(ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['total_evaporation_sum']), start_date=self.start_date, end_date=self.end_date)\
-                                                                                            .mask_to_polygon(Utah_Regional_Boundary).band_rename('total_evaporation_sum', 'AET')
-            ERA5_ET = GenericCollection(collection=ERA5_ET.collection.map(meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date)
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('total_evaporation_sum', 'AET')
+            ERA5_ET = GenericCollection(collection=ERA5_ET.collection.map(self._meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date)
             return ERA5_ET
         elif name == 'ERA5_monthly_ET':
             # https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_DAILY_AGGR
@@ -381,9 +471,9 @@ class InputCollections:
             # https://developers.google.com/earth-engine/datasets/catalog/MODIS_006_MCD15A3H
             # 500 m pixel size
             # Units of mm/day
-            MODIS_ET = GenericCollection(ee.ImageCollection("MODIS/006/MCD15A3H").select(['ET']).filterBounds(Utah_Regional_Boundary), 
+            MODIS_ET = GenericCollection(ee.ImageCollection("MODIS/006/MCD15A3H").select(['ET']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).band_rename('ET', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('ET', 'AET')
             return MODIS_ET
         elif name == 'MODIS_monthly_ET':
             # https://developers.google.com/earth-engine/datasets/catalog/MODIS_006_MCD15A3H
@@ -396,57 +486,85 @@ class InputCollections:
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_DisALEXI_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            OPEN_ET_DisALEXI = GenericCollection(ee.ImageCollection("OpenET/DisALEXI/CONUS/GRIDMET/MONTHLY/v2_0").select(['et']).filterBounds(Utah_Regional_Boundary), 
+            col = ee.ImageCollection("OpenET/DisALEXI/CONUS/GRIDMET/MONTHLY/v2_0")
+            native_proj = col.first().projection()
+            OPEN_ET_DisALEXI = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+            OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
+                                            .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_DisALEXI
         elif name == 'OPEN_ET_ensemble':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_Ensemble_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            OPEN_ET_ensemble = GenericCollection(ee.ImageCollection("OpenET/Ensemble/CONUS/GRIDMET/MONTHLY/v2_0").select(['et_ensemble_mad']).filterBounds(Utah_Regional_Boundary), 
+            col = ee.ImageCollection("OpenET/Ensemble/CONUS/GRIDMET/MONTHLY/v2_0")
+            native_proj = col.first().projection()
+            OPEN_ET_ensemble = GenericCollection(col.select(['et_ensemble_mad']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).MosaicByDate.band_rename('et_ensemble_mad', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et_ensemble_mad', 'AET')
+            OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
+                                            .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_ensemble
         elif name == 'OPEN_ET_PTJPL':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_PTJPL_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            OPEN_ET_PTJPL = GenericCollection(ee.ImageCollection("OpenET/PTJPL/CONUS/GRIDMET/MONTHLY/v2_0").select(['et']).filterBounds(Utah_Regional_Boundary), 
+            col = ee.ImageCollection("OpenET/PTJPL/CONUS/GRIDMET/MONTHLY/v2_0")
+            native_proj = col.first().projection()
+            OPEN_ET_PTJPL = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+            OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
+                                            .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_PTJPL
         elif name == 'OPEN_ET_SIMS':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_SIMS_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            OPEN_ET_SIMS = GenericCollection(ee.ImageCollection("OpenET/SIMS/CONUS/GRIDMET/MONTHLY/v2_0").select(['et']).filterBounds(Utah_Regional_Boundary), 
+            col = ee.ImageCollection("OpenET/SIMS/CONUS/GRIDMET/MONTHLY/v2_0")
+            native_proj = col.first().projection()
+            OPEN_ET_SIMS = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+            OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
+                                            .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_SIMS
         elif name == 'OPEN_ET_SSEBOP':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_SSEBOP_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            OPEN_ET_SSEBOP = GenericCollection(ee.ImageCollection("OpenET/SSEBOP/CONUS/GRIDMET/MONTHLY/v2_0").select(['et']).filterBounds(Utah_Regional_Boundary), 
+            col = ee.ImageCollection("OpenET/SSEBOP/CONUS/GRIDMET/MONTHLY/v2_0")
+            native_proj = col.first().projection()
+            OPEN_ET_SSEBOP = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+            OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
+                                            .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_SSEBOP
         elif name == 'OPEN_ET_EEMETRIC':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_EEMETRIC_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            OPEN_ET_EEMETRIC = GenericCollection(ee.ImageCollection("OpenET/EEMETRIC/CONUS/GRIDMET/MONTHLY/v2_0").select(['et']).filterBounds(Utah_Regional_Boundary), 
+            col = ee.ImageCollection("OpenET/EEMETRIC/CONUS/GRIDMET/MONTHLY/v2_0")
+            native_proj = col.first().projection()
+            OPEN_ET_EEMETRIC = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+            OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
+                                            .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_EEMETRIC
         elif name == 'OPEN_ET_GEESEBAL':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_GEESEBAL_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            OPEN_ET_GEESEBAL = GenericCollection(ee.ImageCollection("OpenET/GEESEBAL/CONUS/GRIDMET/MONTHLY/v2_0").select(['et']).filterBounds(Utah_Regional_Boundary), 
+            col = ee.ImageCollection("OpenET/GEESEBAL/CONUS/GRIDMET/MONTHLY/v2_0")
+            native_proj = col.first().projection()
+            OPEN_ET_GEESEBAL = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+            OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
+                                            .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_GEESEBAL
         else:
             raise ValueError(f"AET collection '{name}' not found. Available options are: 'ERA5_daily_ET', 'ERA5_monthly_ET', 'MODIS_ET', 'MODIS_monthly_ET', 'OPEN_ET_DisALEXI', 'OPEN_ET_ensemble', 'OPEN_ET_PTJPL', 'OPEN_ET_SIMS', 'OPEN_ET_SSEBOP', 'OPEN_ET_EEMETRIC', 'OPEN_ET_GEESEBAL'.")
@@ -473,14 +591,14 @@ class InputCollections:
             # Converted to mm water equivalent
             if self.start_date == '2024-01-01':
                 # There is no Jan 1 image for 2024 so I am grabbing the last image from Dec 2023 and setting the date to Jan 1 2024
-                SMAP_soil_first_img = GenericCollection(ee.ImageCollection("NASA/SMAP/SPL3SMP_E/006").select('soil_moisture_am'), start_date='2023-12-25', end_date='2023-12-31').mask_to_polygon(Utah_Regional_Boundary).image_grab(-1)\
+                SMAP_soil_first_img = GenericCollection(ee.ImageCollection("NASA/SMAP/SPL3SMP_E/006").select('soil_moisture_am'), start_date='2023-12-25', end_date='2023-12-31').mask_to_polygon(self.Utah_Regional_Boundary).image_grab(-1)\
                             .set('Date_Filter', '2024-01-01', 'system:time_start', ee.Date('2024-01-01').millis(), 'day_of_month', 1)
-                SMAP_soil_daily = GenericCollection(ee.ImageCollection("NASA/SMAP/SPL3SMP_E/006").select('soil_moisture_am'), start_date=self.start_date, end_date=self.end_date).mask_to_polygon(Utah_Regional_Boundary)
+                SMAP_soil_daily = GenericCollection(ee.ImageCollection("NASA/SMAP/SPL3SMP_E/006").select('soil_moisture_am'), start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
                 SMAP_soil_daily = GenericCollection(ee.ImageCollection(ee.ImageCollection([SMAP_soil_first_img]).merge(SMAP_soil_daily.collection)))
 
             else: 
-                SMAP_soil_daily = GenericCollection(ee.ImageCollection("NASA/SMAP/SPL3SMP_E/006").select('soil_moisture_am'), start_date=self.start_date, end_date=self.end_date).mask_to_polygon(Utah_Regional_Boundary)
-            SMAP_soil_daily = GenericCollection(collection=SMAP_soil_daily.collection.map(volume_fraction_to_mm_water).map(add_day)).band_rename('soil_moisture_am', 'Soil_Water_End_of_Previous_Timestep')
+                SMAP_soil_daily = GenericCollection(ee.ImageCollection("NASA/SMAP/SPL3SMP_E/006").select('soil_moisture_am'), start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
+            SMAP_soil_daily = GenericCollection(collection=SMAP_soil_daily.collection.map(self._volume_fraction_to_mm_water).map(self._add_day)).band_rename('soil_moisture_am', 'Soil_Water_End_of_Previous_Timestep')
             return SMAP_soil_daily
         elif name == 'SMAP_monthly_soil':
             # https://developers.google.com/earth-engine/datasets/catalog/NASA_SMAP_SPL3SMP_E_006
@@ -494,8 +612,8 @@ class InputCollections:
             # https://developers.google.com/earth-engine/datasets/catalog/NASA_SMAP_SPL4SMGP_008
             # 11 km pixel size
             # units of m3/m3
-            SMAP_soil_daily_aggregate = GenericCollection(ee.ImageCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_SMAP_Daily_Soil_Moisture_Profile_Collection_v1").select('sm_profile').map(volume_fraction_to_mm_water).map(add_day), start_date=self.start_date, end_date=self.end_date)\
-                                                                        .mask_to_polygon(Utah_Regional_Boundary).band_rename('sm_profile', 'Soil_Water_End_of_Previous_Timestep')
+            SMAP_soil_daily_aggregate = GenericCollection(ee.ImageCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_SMAP_Daily_Soil_Moisture_Profile_Collection_v1").select('sm_profile').map(self._volume_fraction_to_mm_water).map(self._add_day), start_date=self.start_date, end_date=self.end_date)\
+                                                                        .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('sm_profile', 'Soil_Water_End_of_Previous_Timestep')
 
             return SMAP_soil_daily_aggregate
         elif name == 'SMAP_monthly_soil_aggregate':
@@ -513,8 +631,8 @@ class InputCollections:
             # Converted to mm water equivalent
             ERA5_soil_moisture_daily = GenericCollection(ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['volumetric_soil_water_layer_1', 'volumetric_soil_water_layer_2', 
                                                         'volumetric_soil_water_layer_3', 'volumetric_soil_water_layer_4']), 
-                                                                start_date=self.start_date, end_date=self.end_date).mask_to_polygon(Utah_Regional_Boundary)
-            ERA5_soil_moisture_daily = GenericCollection(collection=ERA5_soil_moisture_daily.collection.map(ERA5_soil_moisture_mean).map(volume_fraction_to_mm_water).map(add_day), start_date=self.start_date, end_date=self.end_date)
+                                                                start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
+            ERA5_soil_moisture_daily = GenericCollection(collection=ERA5_soil_moisture_daily.collection.map(self._ERA5_soil_moisture_mean).map(self._volume_fraction_to_mm_water).map(self._add_day), start_date=self.start_date, end_date=self.end_date)
             return ERA5_soil_moisture_daily
         elif name == 'ERA5_monthly_soil_moisture':
             # https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_DAILY_AGGR
@@ -532,9 +650,9 @@ class InputCollections:
             # units of kg/m^2 - P = profile, RZ = root zone, S = surface
             # Units effectively are of mm height of water. density of water = 1000 kg/m3 -> (kg/m2)*(m3/1000 kg) = meters -> meters * (1000 mm / meter) = mm -> so the units are already in mm of water
             GLDAS_soil_moisture_daily = GenericCollection(ee.ImageCollection("NASA/GLDAS/V022/CLSM/G025/DA1D").select(['SoilMoist_P_tavg']), 
-                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(Utah_Regional_Boundary)\
+                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)\
                                                                 .band_rename('SoilMoist_P_tavg', 'Soil_Water_End_of_Previous_Timestep')
-            GLDAS_soil_moisture_daily = GenericCollection(collection=GLDAS_soil_moisture_daily.collection.map(add_day), start_date=self.start_date, end_date=self.end_date)
+            GLDAS_soil_moisture_daily = GenericCollection(collection=GLDAS_soil_moisture_daily.collection.map(self._add_day), start_date=self.start_date, end_date=self.end_date)
             return GLDAS_soil_moisture_daily
         elif name == 'GLDAS_monthly_soil_moisture':
             # https://developers.google.com/earth-engine/datasets/catalog/NASA_GLDAS_V022_CLSM_G025_DA1D

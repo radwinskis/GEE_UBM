@@ -13,21 +13,36 @@ def Original_UBM_Step_Function(current_image, previous_state_list):
 
     Soil_Water_End_Of_Previous_Timestep = previous_output_image.select('Soil_Water_End_Of_Previous_Timestep')
 
+    legacy_inputs = False
 
     # Define inputs from `current_image`
-    soil_porosity = current_image.select('soil_porosity')
-    soil_thickness = current_image.select('soil_thickness')
-    field_capacity = current_image.select('field_capacity')
-    wilting_point = current_image.select('wilting_point')
-    geo_K = current_image.select('Geo_K')
-    precipitation = current_image.select('precipitation')
-    snowmelt = current_image.select('snowmelt')
-    PET = current_image.select('PET')
+    if legacy_inputs == True:
+        
+        soil_porosity = current_image.select('soil_porosity')
+        soil_thickness = current_image.select('soil_thickness')
+        field_capacity = current_image.select('field_capacity')
+        wilting_point = current_image.select('wilting_point')
+        geo_K = current_image.select('Geo_K')
+        precipitation = current_image.select('precipitation')
+        snowmelt = current_image.select('snowmelt')
+        PET = current_image.select('PET')
+        zero_image = precipitation.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
+        # 1) Calculate Available Water in mm of water
+        Available_Water = precipitation.add(snowmelt).add(Soil_Water_End_Of_Previous_Timestep)
 
-    zero_image = precipitation.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
-
-    # 1) Calculate Available Water in mm of water
-    Available_Water = precipitation.add(snowmelt).add(Soil_Water_End_Of_Previous_Timestep)
+    elif legacy_inputs == False:
+        
+        soil_porosity = current_image.select('soil_porosity')
+        soil_thickness = current_image.select('soil_thickness')
+        field_capacity = current_image.select('field_capacity')
+        wilting_point = current_image.select('wilting_point')
+        geo_K = current_image.select('Geo_K')
+        precip_and_snowmelt = current_image.select('precip_and_snowmelt_input')
+        PET = current_image.select('PET')
+        zero_image = precip_and_snowmelt.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
+        # 1) Calculate Available Water in mm of water
+        Available_Water = precip_and_snowmelt.add(Soil_Water_End_Of_Previous_Timestep)
+    
     # 2) Caclulate Max Soil Moisture in mm of water
     Max_Soil_Moisture = soil_porosity.multiply(soil_thickness)
 
