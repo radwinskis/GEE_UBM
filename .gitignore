@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 *.pyo
 GEE_UBM.egg-info/
+gNATSGO_machine_learning_gap_filling.ipynb
