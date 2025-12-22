@@ -29,12 +29,33 @@ pip install git+[https://github.com/radwinskis/GEE_UBM.git](https://github.com/r
     - instantaneous amount of water trapped in porous space of soil (?)
 5) Hydraulic conductivity (K) of soil
     - rate at which fluid will flow through connected porous space
-6) Available water
-    - Precipitation and snow melt?
+6) Available water (as input)
+    - Combination of precipitation and snow melt
 7) Evapotranspiration
     - Water lost from evaporation of soil moisture and vegetated transpiration
 
 ![soil_water_diagram.png](soil_water_diagram.png)
+
+## Workflow notes
+
+As the model needs spin-up time to equilibrate, models should be ran for a year prior to the timeframe of interest. 
+For this reason, the model can not be iteratively ran along a continous period - the model must be ran continously for the entire timeframe of interest.
+For example, do not run loops for 2005-2010, 2011-2015, etc. 
+**However, this approach may cause GEE memory errors if the entire sequence of processing is done on GEE servers**
+
+**Best practice will be processing the input collections separately, then storing those collections as assets. This way the actual UBM calculations will run flawlessly and rapidly. Export of the input collections to assets should take no longer than 30 minutes, but likely under 15 minutes.**
+
+> The combined snowmelt + precipitation dataset is processed manually for this project, as there is no publicly available GEE asset for this dataset. **Ensure the dates that you are running the model have corresponding snowmelt + precipitation data in the asset. If new dates are needed, run the `update_snowmelt_and_precip_asset.py` script. Currently the assets have monthly images from 2004 through 2024.**
+
+## Workflow process
+
+1) Define the input image collection (`update_snowmelt_and_precip_asset.py` & `define_and_export_input_collection.py`)
+2) Export the input collection to a GEE asset (`define_and_export_input_collection.py`)
+3) Import the input collection asset (`run_UBM_script.py`)
+4) Run the chosen UBM model (`run_UBM_script.py`)
+5) Export the UBM model output as an asset (`run_UBM_script.py`)
+6) Run zonal statistics on the model output for timeseries analysis (`UBM_zonal_stats_script.py`)
+7) Explore data (`zonal_stats_plotting.ipynb` & `UBM_output_viewer.ipynb`)
 
 ### **Physical / Lithology Assets**
 
@@ -42,29 +63,33 @@ Versions of:
 - Soil Thickness
     - ISRIC asset
     - gNATSGO
+    - gNATSGO filled with ISRIC
+    - Predicted soil thickness from machine learning trained on gNATSGO data (**primary**)
 - Porosity
     - UGS asset
-    - HiHydroSoil
+    - HiHydroSoil (**primary**)
     - POLARIS
 - Field Capacity
     - UGS asset
     - HiHydroSoil
-    - OpenLandMap
+    - OpenLandMap (**primary**)
 - Wilting point
     - UGS asset
-    - HiHydroSoil
+    - HiHydroSoil (**primary**)
 - Hydraulic Conductivity
     - UGS BMC asset
     - UGS Geo K asset
+    - POLARIS Ksat Geo K (**primary**)
+    - HiHydroSoil Ksat Geo K
 
 ### **Precipitation Collections**
 - Dataset sources
-    - PRISM (daily and monthly)
-    - DAYMET (daily and monthly)
+    - PRISM (daily and monthly) **best coverage & accuracy**
+    - DAYMET (daily and monthly) **best resolution**
     - GRIDMET (daily and monthly)
     - CHIIRPS (daily and monthly)
 
-The PRISM monthly (AN81m) dataset only goes up to the end of 2020. I will need to create my own monthly aggregation based on the daily precip dataset.
+> NOTE: The precipitation collections should be considered depreciated as we have moved to using combined snowmelt + precipitation data, combining daily snowmelt delta_SWE data with precip data to produce more accurate monthly aggregations of water inputs
 
 ### **Snow-melt Collections**
 
@@ -74,10 +99,20 @@ Snowmelt datasets:
 
 Since SMAP snow melt data is ingested in three hour increments, the collection is MASSIVE. To handle this, I am exporting a daily aggregated version of the collection to an asset image collection to make future use of the data more managable and efficient. Only 3000 tasks are allowed at a time, so the export happens in two batches: 1) 2015-04-01 to 2022-12-31, and 2) 2023-01-01 to 2025-10-24 (last available SMAP date). The exported asset should already be masked to the Utah region but will need to double check.
 
+> NOTE: The snow-melt collections should be considered depreciated as we have moved to using combined snowmelt + precipitation data, combining daily snowmelt delta_SWE data with precip data to produce more accurate monthly aggregations of water inputs
+
+### **SNODAS + Precipitation Collections (Merged Water Inputs)**
+*Depending on the value of Delta_SWE, calculation of water input varies such that `Input = Precip - Delta_SWE` for accumulation days (Delta_SWE > 0) and `Input = Precip + |Delta_SWE| * 0.9` for ablation days (Delta_SWE <= 0). The 0.9 factor accounts for sublimation losses during melt, assuming roughly 10% sublimation. The expression `Input = Precip - Delta_SWE` accounts for precipitation as rain or snow, such that there is no need to account for phase changes separately.*
+
+SNODAS + Precipitation data sources:
+- SNODAS + DAYMET (monthly)
+- SNODAS + PRISM (monthly)
+- SNODAS + GRIDMET (monthly) 
+
 ### **Potential Evapotranspiration (PET) Collections**
 
 PET data sources:
-- GRIDMET (daily and monthly)
+- GRIDMET (daily and monthly) **primary**
 - ERA5 (daily and monthly)
 
 ### **Evapotranspiration (ET) Collections**
@@ -85,7 +120,7 @@ PET data sources:
 AET data sources:
 - ERA5 (daily and monthly)
 - MODIS (8-day and monthly)
-- OpenET (monthly)
+- OpenET (monthly) **primary**
     - DisALEXI
     - Ensemble
     - PTJPL
@@ -123,12 +158,57 @@ Contains the heavy-lifting spatial operations.
 ### `OriginalUBM.py` / `ModifiedUBM1.py` / `ModifiedUBM2.py`
 Contain the ee.Image.iterate() logic for the specific model formulations. These models use ee.Image.where() logic to handle conditional branching (e.g., "If saturated, do X, else do Y") entirely on the server.
 
+### `SnowMelt.py`
+Module for calculating snowmelt (Delta SWE) from SNODAS data as well as calculating total water inputs (precipitation + snowmelt), accounting for precipitation type (rain or snow). Options for daily and monthly aggregations, exporting, and masking.
+
+## 🛠 Scripts Overview
+
+### `update_snowmelt_and_precip_asset.py`
+Script for creating a GEE image collection of snowmelt + precipitation for the chosen precip data types, and exporting of the image collection to a GEE asset. Dynamically adjusts to prevent overwriting duplicate data to the asset and handles image projections to be WGS84 UTM Zone 12N. 
+
+### `define_and_export_input_collection.py`
+Script for combining all the input images and image collections necessary for running the UBM model, and will export this "model ready" collection to a GEE asset. 
+This script also ensures all the images are resampled/reprojected to the scale of the coarset available input. A variety of inputs exist in the script to allow specifying which version of the UBM model this collection is designed for.
+
+### `run_UBM_script.py`
+Script for taking the GEE asset exported by `define_and_export_input_collection.py` and running the UBM model of choice, then exports the model results to a GEE asset.
+
+### `UBM_zonal_stats_script.py`
+Script for extracting zonal statistics from the UBM model and input images/collections, and exports the stats to a csv.
+See the `Zonal_Stats_Timeseries` folder for results.
+
+## Notebooks Overview (for development and testing purposes)
+
+### `gNATSGO_machine_learning_gap_filling_update.ipynb`
+Jupyter Notebook used as the working-space for setting up, training, validating, and exporting a machine learning derived (random forest) map of root zone soil thickness throughout utah, based on gNATSGO data. 
+
+### `snowmelt_testing.ipynb`
+Jupyter Notebook used as the working-space for testing the snowmelt + precipitation datasets, ensuring the approach used is valid.
+
+### `preffered_inputs_model_testing.ipynb`
+My own (Mark Radwin) notebook for defining the image collections for the UBM runs, and actually running the UBM models. Includes plots and thoughts.
+
+### `UBM_runs_workspace.ipynb` 
+Cleaned notebook for running the UBM models, meant to be inspected or used by anyone else. Similar to `preffered_inputs_model_testing.ipynb` but not as messy.
+Probably best to just use `run_UBM_script.py` for cleanliness and consistency. 
+
+### `UBM_output_viewer.ipynb`
+Clean and simple notebook for mapping the results produced by `UBM_zonal_stats_script.py`.
+
+### `zonal_stats_plotting.ipynb`
+Clean and useful notebook for taking a zonal stats timeseries produced by `UBM_zonal_stats_script.py` and plotting.
+
+### `asset_deletion_helper.ipynb`
+Notebook to use for when an asset needs its children deleted so the asset itself can be deleted. Useful for when updates are necessary, as GEE does not allow overwriting of existing assets. 
+
 ## ⚠️ Data Units & Conventions
 - **Height/Depth:** All units are standardized to millimeters (mm) (e.g., Precip, Soil Thickness, SWE).
 
 - **Time:** Models can run on Daily or Monthly time steps, provided the input collection is aggregated correctly via the Factory.
 
-- **Projection:** The build_model_ready_collection function automatically detects the coarsest resolution among your inputs (usually ERA5 or SMAP) and projects all finer datasets (PRISM, etc.) to match that grid.
+- **Projection:** The build_model_ready_collection function automatically detects the coarsest resolution among your inputs (usually ERA5 or SMAP) and projects all finer datasets to match that grid. The CRS is always forced to `EPSG:32612` (AKA WGS84 UTM Zone 12N).
+
+> IMPORTANT NOTE: `soil_thickness` is defined here as the depth of soil in the active root-zone, where any water infiltrating below the root-zone cannot be evaporated and will eventually be incorporated into regional aquifers. All recharge is considered `potential recharge` as we are not currently tracking the transport of water between the bottom of the root-zone and any downgradient aquifer.
 
 ## UBM logic
 

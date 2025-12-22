@@ -3,7 +3,7 @@ from RadGEEToolbox import GenericCollection
 
 class SnowMeltCollection:
     """
-    Class for calculating snowmelt (Delta SWE) from SNODAS data. Options for daily and monthly aggregations, exporting, and masking.
+    Class for calculating snowmelt (Delta SWE) from SNODAS data as well as calculating total water inputs (precipitation + snowmelt), accounting for precipitation type (rain or snow). Options for daily and monthly aggregations, exporting, and masking.
     
     SNODAS data source: https://gee-community-catalog.org/projects/snodas/
 
@@ -146,6 +146,8 @@ class SnowMeltCollection:
         # 3. Capture Target Projection from Precipitation (The "Master Grid")
         # We will force SNODAS to match this grid.
         reference_proj = precip_col.first().projection()
+        reference_scale = reference_proj.nominalScale()
+        target_proj = ee.Projection('EPSG:32612').atScale(reference_scale)
 
         # 4. Join Precip to Delta SWE with options to use 'date' or 'system:time_start' depending on what is available from input datasets
         if joinby == 'date':
@@ -166,8 +168,20 @@ class SnowMeltCollection:
             
             # Reproject Delta SWE to match Precip grid.
             # Use 'bilinear' resampling to smooth SNODAS pixels into the Precip grid.
-            delta_img = delta_img_native.reproject(
-                crs=reference_proj).resample('bilinear')
+            # delta_img = delta_img_native.reproject(
+            #     crs=reference_proj).resample('bilinear')
+            
+            precip_img = precip_img.resample('bilinear').reproject(target_proj)
+            # SNODAS: reduce only if finer than precip scale; else upsample
+            native_scale = ee.Number(delta_img_native.projection().nominalScale())
+            is_finer = native_scale.lt(reference_scale)
+
+            delta_img = ee.Image(ee.Algorithms.If(
+                is_finer,
+                delta_img_native.reduceResolution(
+                    reducer=ee.Reducer.mean(), maxPixels=65536),
+                delta_img_native.resample('bilinear')
+            )).reproject(target_proj)
             
             delta = delta_img.select('delta_swe')
             P = precip_img.select('precipitation')
@@ -225,7 +239,7 @@ class SnowMeltCollection:
             
         return daily_delta_collection.monthly_sum_collection
 
-    def export_collection(self, collection_obj, asset_path, region=None, scale=1000, filename_prefix='export_'):
+    def export_collection(self, collection_obj, asset_path, region=None, scale=1000, crs='EPSG:32612', filename_prefix='export_'):
         """
         Wrapper to export a collection to GEE Asset using GenericCollection's export tool.
         
@@ -242,6 +256,7 @@ class SnowMeltCollection:
             asset_collection_path=asset_path,
             region=region,
             scale=scale,
+            crs=crs,
             filename_prefix=filename_prefix,
             max_pixels=1e13
         )

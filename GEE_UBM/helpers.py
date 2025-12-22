@@ -1,7 +1,7 @@
 import ee
 from RadGEEToolbox import LandsatCollection, GetPalette, GenericCollection
 
-def harmonize_to_target(source_image, target_proj):
+def harmonize_to_target(source_image, target_proj, downsample_method='focal_mean'):
     """
     Resamples a source image to a target projection, intelligently
     choosing the resampling method AND explicitly preserving critical properties.
@@ -17,9 +17,14 @@ def harmonize_to_target(source_image, target_proj):
     target_scale = target_proj.nominalScale()
     is_finer = source_scale.lt(target_scale)
     
-    downsampled = source_image.reduceResolution(
-        reducer=ee.Reducer.mean(), maxPixels=65536
-    ).reproject(crs=target_proj)
+    if downsample_method == 'focal_mean':
+        downsampled = source_image.focal_mean(radius=500, kernelType='square', units='meters').reproject(crs=target_proj)
+    elif downsample_method == 'reduceResolution':
+        downsampled = source_image.reduceResolution(
+            reducer=ee.Reducer.mean(), maxPixels=65536
+        ).reproject(crs=target_proj)
+    else:
+        raise ValueError("Invalid downsample_method. Choose 'focal_mean' or 'reduceResolution'.")
     
     interpolated = source_image.resample('bilinear').reproject(
         crs=target_proj
@@ -39,7 +44,7 @@ def harmonize_to_target(source_image, target_proj):
     )
     return final_image
 
-def build_model_ready_collection(timeseries_collections_list, static_images_list, verbose=False):
+def build_model_ready_collection(timeseries_collections_list, static_images_list, verbose=False, target_crs='EPSG:32612', target_scale=None):
     """
     Takes a Python list of time-series GenericCollection image collections and a Python
     list of static ee.Images, and builds a combined GenericCollection image collection, 
@@ -74,9 +79,21 @@ def build_model_ready_collection(timeseries_collections_list, static_images_list
     # Determine the coarsest scale and its index
     max_scale = scales.reduce(ee.Reducer.max())
     # Get the index of the coarsest scale in the scales list (to find corresponding projection)
-    max_index = scales.indexOf(max_scale)
-    # Get the target projection (coarsest)
-    target_proj = ee.Projection(projections.get(max_index)) # Master grid
+    # max_index = scales.indexOf(max_scale)
+    # # Get the target projection (coarsest)
+    # target_proj = ee.Projection(projections.get(max_index)) # Master grid
+
+    if target_scale:
+        ts = ee.Algorithms.If(ee.Number(target_scale).gt(0), target_scale, max_scale)
+    else:
+        ts = max_scale
+    target_proj = ee.Projection(target_crs).atScale(ts)
+
+    if verbose:
+        try:
+            print(f"Target CRS: {target_crs}, Target scale (m): {ee.Number(ts).getInfo()}")
+        except Exception:
+            pass
     
     # === Part 2: Harmonize and Merge Time-Series ===
     def harmonize_collection(coll):
@@ -125,7 +142,7 @@ def build_model_ready_collection(timeseries_collections_list, static_images_list
     
     # Harmonize each static image to the target projection
     def harmonize_static(img):
-        return harmonize_to_target(ee.Image(img), target_proj)
+        return harmonize_to_target(ee.Image(img), target_proj, downsample_method='focal_mean')
     # Map harmonization over static images, resulting in ee.List of harmonized static images
     harmonized_static_images = ee_static_list.map(harmonize_static)
     
