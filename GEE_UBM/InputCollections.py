@@ -50,6 +50,9 @@ class InputCollections:
             - SNODAS + DAYMET Monthly Precip + Snowmelt
             - SNODAS + PRISM Monthly Precip + Snowmelt
 
+        - Irrigation Collections:
+            - UT UDWR Monthly Irrigation Depth
+
         - Potential Evapotranspiration (PET) Collections:
             - GRIDMET Daily PET
             - GRIDMET Monthly PET
@@ -219,6 +222,10 @@ class InputCollections:
     def _ECMWF_soil_moisture_mean(self, image):
         expression = '(b("volumetric_soil_moisture_sol1")+b("volumetric_soil_moisture_sol2")+b("volumetric_soil_moisture_sol3")+b("volumetric_soil_moisture_sol4"))/4'
         return ee.Image(image.expression(expression).copyProperties(image).set('system:time_start', image.get('system:time_start'))).rename('Soil_Water_End_of_Previous_Timestep')
+
+    @staticmethod
+    def _unmask(img):
+        return img.unmask(0)
 
     def get_static_raster(self, name):
         """
@@ -667,6 +674,70 @@ class InputCollections:
             return GRIDMET_SNODAS_water_inputs
         else:
             raise ValueError(f"Combined Precipitation and Snowmelt collection '{name}' not found. Available options are: 'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly', 'GRIDMET_SNODAS_combined_inputs_monthly'.")
+        
+    def get_irrigation(self, name):
+        """
+        Retrives an irrigation input collection by name, where irrigation inputs are provided as mm/month of water equivalent.
+        This is critical for running the UBM in agricultural areas. The data is derived from the Utah Department of Water Resources (UDWR), 
+        using the state water budget data (https://dwre-utahdnr.opendata.arcgis.com/pages/water-budget) 
+        and distributed spatially based on UDWR agricultural land use data (https://utahdnr.hub.arcgis.com/datasets/utahDNR::wrlu-4326-lu-group/about).
+
+        Yearly irrigation volumes are distributed across the irrigation season (April through September) to create a monthly time series, and each month 
+        is weighted based on alfalfa irrigation practices (min in spring max during July).
+
+        Options: 'UT_UDWR_irrigation_inputs_monthly_scaled_30m'
+
+        Args:
+            name (str): Name of the irrigation input collection to retrieve.
+        Returns:
+            Image Collection (GenericCollection): The requested irrigation input collection as RadGEEToolbox GenericCollection object.
+        """
+        def unpack_multiband_to_collection(image):
+            # 1. Get all band names (e.g., "20040401_depth", "20040501_depth"...)
+            band_names = image.bandNames()
+            
+            # 2. Map over the list of bands to create a list of Images
+            def band_to_image(b_name):
+                # Extract the single band
+                band = image.select([b_name])
+                
+                # Parse date from the band name
+                # Assumption: Bands are named "YYYYMM01_..." by the export
+                # We slice the first 8 characters to get the date string
+                date_str = ee.String(b_name).slice(2, 10) 
+                date = ee.Date.parse('YYYYMMdd', date_str)
+                
+                # Rename back to a common name (so all images match)
+                # and set the crucial time property
+                return band.unmask(0).clip(self.Utah_Regional_Boundary).rename('irrigation_depth_mm').set({
+                    'system:time_start': date.millis(),
+                    'year': date.get('year'),
+                    'month': date.get('month'),
+                    'Date_Filter': date.format('YYYY-MM-dd')
+                })
+            
+            # 3. Convert list of images to ImageCollection
+            images = band_names.map(band_to_image)
+            return ee.ImageCollection(images)
+        def unmask_img(img):
+            return img.unmask(0)
+        if name == 'UT_UDWR_irrigation_inputs_monthly_scaled_30m':
+            img = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m') #.select(['irrigation_depth_mm'])
+            col = unpack_multiband_to_collection(img).select(['irrigation_depth_mm'])
+            native_proj = col.first().projection()
+            UT_UDWR_irrigation_inputs = GenericCollection(col, start_date=self.start_date, end_date=self.end_date)
+            if self.resampling_method == 'bilinear':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            elif self.resampling_method == 'focal_mean':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            elif self.resampling_method == 'reduceResolution':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            return UT_UDWR_irrigation_inputs
+        else:
+            raise ValueError(f"Irrigation input collection '{name}' not found. Available option is: 'UT_UDWR_irrigation_inputs_monthly_scaled_30m'.")
 
     def get_PET(self, name):
         """
@@ -683,7 +754,7 @@ class InputCollections:
             # 4.5 km pixel size
             # Units of mm/day
              # Daily alfalfa reference evapotranspiration
-            GRIDMET_daily_PET = GenericCollection(collection=ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").select(['etr']), start_date=self.start_date, end_date=self.end_date)\
+            GRIDMET_daily_PET = GenericCollection(collection=ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").select(['etr']).map(self._unmask), start_date=self.start_date, end_date=self.end_date)\
                                                                                             .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('etr', 'PET')
             return GRIDMET_daily_PET
         elif name == 'GRIDMET_monthly_PET':
@@ -700,7 +771,7 @@ class InputCollections:
             # 11 km pixel size
             # units of meters of water equivalent
             # Units converted to mm/day
-            ERA5_PET = GenericCollection(ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['potential_evaporation_sum']), start_date=self.start_date, end_date=self.end_date)\
+            ERA5_PET = GenericCollection(ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['potential_evaporation_sum']).map(self._unmask), start_date=self.start_date, end_date=self.end_date)\
                                                                                             .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('potential_evaporation_sum', 'PET')
             ERA5_PET = GenericCollection(collection=ERA5_PET.collection.map(self._meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date)
             return ERA5_PET
@@ -732,7 +803,7 @@ class InputCollections:
             # 11 km pixel size
             # units of meters of water equivalent
             # Units converted to mm/day
-            ERA5_ET = GenericCollection(ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['total_evaporation_sum']), start_date=self.start_date, end_date=self.end_date)\
+            ERA5_ET = GenericCollection(ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").select(['total_evaporation_sum']).map(self._unmask), start_date=self.start_date, end_date=self.end_date)\
                                                                                             .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('total_evaporation_sum', 'AET')
             ERA5_ET = GenericCollection(collection=ERA5_ET.collection.map(self._meters_to_mm_conversion), start_date=self.start_date, end_date=self.end_date)
             return ERA5_ET
@@ -745,15 +816,15 @@ class InputCollections:
             ERA5_monthly_ET = ERA5_daily_ET.monthly_sum_collection
             return ERA5_monthly_ET
         elif name == 'MODIS_ET':
-            # https://developers.google.com/earth-engine/datasets/catalog/MODIS_006_MCD15A3H
+            # https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD16A2GF
             # 500 m pixel size
             # Units of mm/day
-            MODIS_ET = GenericCollection(ee.ImageCollection("MODIS/061/MOD16A2GF").select(['ET']).filterBounds(self.Utah_Regional_Boundary), 
+            MODIS_ET = GenericCollection(ee.ImageCollection("MODIS/061/MOD16A2GF").select(['ET']).filterBounds(self.Utah_Regional_Boundary).map(self._unmask), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('ET', 'AET')
             return MODIS_ET
         elif name == 'MODIS_monthly_ET':
-            # https://developers.google.com/earth-engine/datasets/catalog/MODIS_006_MCD15A3H
+            # https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD16A2GF
             # 500 m pixel size
             # Units of mm/month
             MODIS_ET = self.get_AET('MODIS_ET')
@@ -764,11 +835,12 @@ class InputCollections:
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_DisALEXI_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/DisALEXI/CONUS/GRIDMET/MONTHLY/v2_0")
+            col = ee.ImageCollection("OpenET/DISALEXI/CONUS/GRIDMET/MONTHLY/v2_0")
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_DisALEXI = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+            OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             # OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             if self.resampling_method == 'bilinear':
@@ -790,6 +862,7 @@ class InputCollections:
             OPEN_ET_ensemble = GenericCollection(col.select(['et_ensemble_mad']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et_ensemble_mad', 'AET')
+            OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             # OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             if self.resampling_method == 'bilinear':
@@ -813,6 +886,7 @@ class InputCollections:
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
+            OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
                 OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
                 OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL, start_date=self.start_date, end_date=self.end_date)
@@ -834,6 +908,7 @@ class InputCollections:
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
+            OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
                 OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
                 OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS, start_date=self.start_date, end_date=self.end_date)
@@ -855,6 +930,7 @@ class InputCollections:
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
+            OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
                 OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
                 OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP, start_date=self.start_date, end_date=self.end_date)
@@ -876,6 +952,7 @@ class InputCollections:
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
+            OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
                 OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
                 OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC, start_date=self.start_date, end_date=self.end_date)
@@ -897,6 +974,7 @@ class InputCollections:
                                                                                     .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
+            OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
                 OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
                 OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL, start_date=self.start_date, end_date=self.end_date)

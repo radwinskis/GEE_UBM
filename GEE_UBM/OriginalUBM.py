@@ -25,10 +25,11 @@ def Original_UBM_Step_Function(current_image, previous_state_list):
         geo_K = current_image.select('Geo_K')
         precipitation = current_image.select('precipitation')
         snowmelt = current_image.select('snowmelt')
+        irrigation = current_image.select('irrigation')
         PET = current_image.select('PET')
         zero_image = precipitation.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
         # 1) Calculate Available Water in mm of water
-        Available_Water = precipitation.add(snowmelt).add(Soil_Water_End_Of_Previous_Timestep)
+        Available_Water = precipitation.add(snowmelt).add(irrigation).add(Soil_Water_End_Of_Previous_Timestep)
 
     elif legacy_inputs == False:
         
@@ -38,10 +39,11 @@ def Original_UBM_Step_Function(current_image, previous_state_list):
         wilting_point = current_image.select('wilting_point')
         geo_K = current_image.select('Geo_K')
         precip_and_snowmelt = current_image.select('precip_and_snowmelt_input')
+        irrigation = current_image.select('irrigation')
         PET = current_image.select('PET')
         zero_image = precip_and_snowmelt.multiply(0) #⚠️⚠️⚠️ needing to create a zero image with correct projection and properties
         # 1) Calculate Available Water in mm of water
-        Available_Water = precip_and_snowmelt.add(Soil_Water_End_Of_Previous_Timestep)
+        Available_Water = precip_and_snowmelt.add(irrigation).add(Soil_Water_End_Of_Previous_Timestep)
     
     # 2) Caclulate Max Soil Moisture in mm of water
     Max_Soil_Moisture = soil_porosity.multiply(soil_thickness)
