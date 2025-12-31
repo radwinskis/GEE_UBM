@@ -6,7 +6,7 @@ import numpy as np
 #------------------------------#
 ###### PRIMARY USER INPUT ######
 #------------------------------#
-input_collection_asset_id = 'projects/ut-gee-ugs-bsf-dev/assets/Aggregated_Modified1_UBM_Input_Collections/UT_RF1kmST_POLARISPor_OLMFC_HHSWP_POLARISKsatM_DAYMETSNODASM_OPENETEEMETRIC_M'
+input_collection_asset_id = 'projects/ut-gee-ugs-bsf-dev/assets/Aggregated_Modified1_UBM_Input_Collections/UT_RF1kmST_POLARISPor_OLMFC_HHSWP_POLARISKsatM_GRIDMETSNODASM_OPENETEEMETRIC_M'
 
 ##### RUN EXPORT LOOP OR NOT #####
 run_loop = True  # Set to True to run the loop and export collections for each year. Set to False to skip exports and inspect dummy variables.

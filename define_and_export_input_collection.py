@@ -112,9 +112,9 @@ print(f"Using static rasters: {static_rasters_to_use}")
 ### If using the original UBM, provide a snowmelt and precip collection and PET collection
 ### If using the modified UBM 1, provide a snowmelt and precip collection and AET collection
 ### If using the modified UBM 2, provide a snowmelt and precip collection, AET collection, and soil moisture collection
-snowmelt_and_precip_collection = snowmelt_and_precip_options[2]  # Choose from snowmelt_and_precip_options
+snowmelt_and_precip_collection = snowmelt_and_precip_options[1]  # Choose from snowmelt_and_precip_options
 PET_collection = PET_options[0]  # Choose from PET_options
-AET_collection = AET_options[9]  # Choose from AET_options
+AET_collection = AET_options[7]  # Choose from AET_options
 soil_moisture_collection = soil_moisture_options[0]  # Choose from soil_moisture_options
 
 if UBM_model_to_use == 'Original_UBM':
