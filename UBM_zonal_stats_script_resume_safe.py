@@ -85,10 +85,10 @@ regions_dict = {
 zonal_stats_region = 'GSL_Basin_Watershed' # Change this to the desired region for zonal statistics ⚠️⚠️⚠️
 # ⚠️⚠️⚠️🌐🌐🌐
 
-if zonal_stats_region not in regions_dict:
+if zonal_stats_region not in regions_dict and manually_set_region_for_zonal_stats:
     raise ValueError(f"Region '{zonal_stats_region}' not found in regions_dict. Please add it before proceeding.")
-
-print(f"Calculating zonal statistics for region: {zonal_stats_region}")
+if manually_set_region_for_zonal_stats:
+    print(f"Calculating zonal statistics for region: {zonal_stats_region}")
 
 if zonal_stats_region == 'UT':
     folder_id = 'Utah_Statewide'
@@ -104,7 +104,7 @@ elif zonal_stats_region == 'Sanpete_Watershed':
 #------------------------------#
 ###### PRIMARY USER INPUT ###### ⚠️⚠️⚠️
 #------------------------------#
-input_UBM_collection_asset_id = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs/Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_POLKsatM_GRIDMETSNOM_ETEEMETRIC_IRRIm_M_m3'
+input_UBM_collection_asset_id = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs/Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_POLKsatM_PRISMSNOM_ETPTJPL_IRRIm_M_m3' 
 
 asset_name = input_UBM_collection_asset_id.split('/')[-1]
 
@@ -212,9 +212,10 @@ def run_all_zonal_stats_and_save_to_csv(region_name, geometry, output_path_for_c
         zonal_stats_df['Date'] = pd.to_datetime(zonal_stats_df['Date'])
         zonal_stats_df = zonal_stats_df.reset_index(drop=True)
     print("DataFrame compilation completed. Saving to CSV...")
-    tmp_path = output_path_for_csv + ".tmp"
-    zonal_stats_df.to_csv(tmp_path, index=False)
-    os.replace(tmp_path, output_path_for_csv)
+    # tmp_path = output_path_for_csv + ".tmp"
+    # zonal_stats_df.to_csv(tmp_path, index=False)
+    # os.replace(tmp_path, output_path_for_csv)
+    zonal_stats_df.to_csv(output_path_for_csv, index=False)
     print(f"Zonal statistics saved to {output_path_for_csv}")
 
 
@@ -222,9 +223,9 @@ if manually_set_region_for_zonal_stats:
     run_manual_zonal_stats_and_save_to_csv()
 else:
     # Utah Statewide
-    statewide_folder = 'C\\Users\\mradwin\\Documents\\Utah Soil Water Balance\\Zonal_Stats_Timeseries\\All_Watersheds\\Utah_Statewide\\'
+    statewide_folder = 'C:\\Users\\mradwin\\Documents\\Utah Soil Water Balance\\Zonal_Stats_Timeseries\\All_Watersheds\\Utah_Statewide\\'
     if not os.path.exists(statewide_folder):
-        print(f"Output folder does not exist. Creating it.")
+        print(f"Output folder {statewide_folder} does not exist. Creating it.")
         os.makedirs(statewide_folder)
     statewide_path = f'{statewide_folder}{asset_name}_Zonal_Stats_Utah_Statewide.csv'
     if resume_skip_existing and os.path.exists(statewide_path):
@@ -233,9 +234,9 @@ else:
         run_all_zonal_stats_and_save_to_csv('Utah_Statewide', UT_boundary, statewide_path)
 
     # GSL Basin
-    gsl_folder = 'C\\Users\\mradwin\\Documents\\Utah Soil Water Balance\\Zonal_Stats_Timeseries\\All_Watersheds\\GSL_Basin_Watershed\\'
+    gsl_folder = 'C:\\Users\\mradwin\\Documents\\Utah Soil Water Balance\\Zonal_Stats_Timeseries\\All_Watersheds\\GSL_Basin_Watershed\\'
     if not os.path.exists(gsl_folder):
-        print(f"Output folder does not exist. Creating it.")
+        print(f"Output folder {gsl_folder} does not exist. Creating it.")
         os.makedirs(gsl_folder)
     gsl_path = f'{gsl_folder}{asset_name}_Zonal_Stats_GSL_Basin.csv'
     if resume_skip_existing and os.path.exists(gsl_path):
@@ -247,7 +248,11 @@ else:
     try:
         for i, name in enumerate(all_utah_watershed_names_cleaned):
             print(f"Processing zonal statistics for watershed: {name}")
-            output_folder_for_csv = f'C\\Users\\mradwin\\Documents\\Utah Soil Water Balance\\Zonal_Stats_Timeseries\\All_Watersheds\\{name}\\'
+            output_folder_for_csv = f'C:\\Users\\mradwin\\Documents\\Utah Soil Water Balance\\Zonal_Stats_Timeseries\\All_Watersheds\\{name}\\'
+            if name == 'Upper_Green_Flaming_Gorge_Reservoir':
+                name = 'Uppr_Green_Flmng_Grge_Res'
+            elif name == 'Pilot_Thousand_Springs_Nevada_Utah':
+                name = 'Pilot_Thsnd_Sprngs_NV_UT'
             output_path_for_csv = f'{output_folder_for_csv}{asset_name}_Zonal_Stats_{name}.csv'
 
             # Check if path folder exists, if not create it

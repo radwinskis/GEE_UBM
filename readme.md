@@ -1,5 +1,5 @@
 ## GEE_UBM: Utah Soil Water Balance Model
-GEE_UBM is a Python package for performing spatially distributed Soil Water Balance Utah Basin Model (UBM) calculations entirely within Google Earth Engine (GEE). It provides a standardized workflow to fetch hydrological datasets (Precipitation, Snowmelt, ET, Soil Properties), harmonize them to a common grid, and run various "Bucket Model" scenarios to estimate Recharge, Runoff, and Soil Moisture dynamics.
+GEE_UBM is a Python package for performing spatially distributed Soil Water Balance Utah Basin Model (UBM) calculations entirely within Google Earth Engine (GEE). It provides a standardized workflow to fetch and pre-process hydrological datasets (Precipitation, Snow-melt, Irrigation Inputs, ET, Soil Properties), harmonize them to a common grid, and run various "Bucket Model" scenarios to estimate Recharge, Runoff, and Soil Moisture dynamics.
 
 > This is a work-in-progress. The module provides the necessary tools for running the UBM model but does not 
 > contain any working files for the actual calculation of the UBM model. I will be adding this soon.
@@ -30,7 +30,7 @@ pip install git+[https://github.com/radwinskis/GEE_UBM.git](https://github.com/r
 5) Hydraulic conductivity (K) of soil
     - rate at which fluid will flow through connected porous space
 6) Available water (as input)
-    - Combination of precipitation and snow melt
+    - Combination of precipitation, snow-melt, and irrigation inputs
 7) Evapotranspiration
     - Water lost from evaporation of soil moisture and vegetated transpiration
 
@@ -48,7 +48,14 @@ For example, do not run loops for 2005-2010, 2011-2015, etc.
 > The combined snowmelt + precipitation dataset is processed manually for this project, as there is no publicly available GEE asset for this dataset. **Ensure the dates that you are running the model have corresponding snowmelt + precipitation data in the asset. If new dates are needed, run the `update_snowmelt_and_precip_asset.py` script. Currently the assets have monthly images from 2004 through 2024.**
 
 ## Workflow process
+**FINAL, MOST EFFICIENT AND GEE FRIENDLY WORKFLOW:**
+**1)** Use `run_ubm_complete_workflow.py`, which imports `generate_ubm_inputs.py`, to select the inputs to use for the UBM input collection, select the timeframe, select the UBM model to run, choose other available settings, automatically run the UBM model, and automatically export the UBM results (including the input data) as a GEE asset. 
+**2)** Run zonal statistics on the model output for timeseries analysis (`UBM_zonal_stats_script.py` or `UBM_zonal_stats_script_resume_safe.py`)
+**3)** Explore data (`zonal_stats_plotting.ipynb` & `UBM_output_viewer.ipynb`)
 
+> The workflow was changed due to GEE asset quota limitations. Exporting the input collection in addition to the output collection as separate assets was reaching GEE limits for the number of available assets (exported images). The updated workflow computes the input collection on-the-fly and exports the input images with the output images as a single asset, reducing total asset numbers. Additionally, this workflow requires less user intervention and has more automation built-in. However, the scripts for this workflow are slightly more complex and will require the user to pay close attention to any changes to the script (although many checks are implemented to prevent issues).
+
+**Legacy alternative (not used for final workflow):**
 1) Define the input image collection (`update_snowmelt_and_precip_asset.py` & `define_and_export_input_collection.py`)
 2) Export the input collection to a GEE asset (`define_and_export_input_collection.py`)
 3) Import the input collection asset (`run_UBM_script.py`)
@@ -82,7 +89,7 @@ Versions of:
     - POLARIS Ksat Geo K (**primary**)
     - HiHydroSoil Ksat Geo K
 
-### **Precipitation Collections**
+### **Precipitation Collections (See Note Below)**
 - Dataset sources
     - PRISM (daily and monthly) **best coverage & accuracy**
     - DAYMET (daily and monthly) **best resolution**
@@ -91,7 +98,7 @@ Versions of:
 
 > NOTE: The precipitation collections should be considered depreciated as we have moved to using combined snowmelt + precipitation data, combining daily snowmelt delta_SWE data with precip data to produce more accurate monthly aggregations of water inputs
 
-### **Snow-melt Collections**
+### **Snow-melt Collections (See Note Below)**
 
 Snowmelt datasets:
 - ERA5 (daily and monthly)
@@ -108,6 +115,10 @@ SNODAS + Precipitation data sources:
 - SNODAS + DAYMET (monthly)
 - SNODAS + PRISM (monthly)
 - SNODAS + GRIDMET (monthly) 
+
+### **Irrigation Collection**
+- Irrigation Rasters Derived From UDWR Data (monthly)
+> Created by merging UDWR active and passive irrgiation water budget data for each Utah subregion (basin) and available UDWR Water Related Land Use (WRLU) shapefiles. UDWR water budget data is yearly, so assumptions were made that irrigation occurs only between april-october and the yearly values are distributed among the irrigation months and ONLY at pixels that align with WRLU data indicating locations that are irrigated. Scaling factors are applied between april-october to account for mid-summer being the peak of irrigation amounts.
 
 ### **Potential Evapotranspiration (PET) Collections**
 
@@ -164,23 +175,40 @@ Module for calculating snowmelt (Delta SWE) from SNODAS data as well as calculat
 ## 🛠 Scripts Overview
 
 ### `update_snowmelt_and_precip_asset.py`
-Script for creating a GEE image collection of snowmelt + precipitation for the chosen precip data types, and exporting of the image collection to a GEE asset. Dynamically adjusts to prevent overwriting duplicate data to the asset and handles image projections to be WGS84 UTM Zone 12N. 
+Script for creating a GEE image collection of snowmelt + precipitation for the chosen precip data types, and exporting of the image collection to a GEE asset. Dynamically adjusts to prevent overwriting duplicate data to the asset and handles image projections to be WGS84 UTM Zone 12N. **-- Part of final workflow --** 
+
+### `generate_ubm_inputs.py`
+Helper script to pre-process the input collection to be used for running UBM models, when the input collection is not required to be a GEE asset. **-- Part of final workflow --**
+
+### `run_ubm_complete_workflow.py`
+Script that allows user to: 1) define the UBM input collection (**NOT** as an asset), 2) set the timescale of the model, 3) set output format (water height or volume), 4) specify the model to run (original UBM or modified versions), 5) run the UBM of choice (automatic based on user defined settings), 6) automatically export the UBM run to a GEE asset under a pre-defined file organization schema. Checks are performed to ensure no duplicate images are added to a GEE asset and that the user defined settings are valid. **-- Part of final workflow --**
 
 ### `define_and_export_input_collection.py`
 Script for combining all the input images and image collections necessary for running the UBM model, and will export this "model ready" collection to a GEE asset. 
-This script also ensures all the images are resampled/reprojected to the scale of the coarset available input. A variety of inputs exist in the script to allow specifying which version of the UBM model this collection is designed for.
+This script also ensures all the images are resampled/reprojected to the scale of the coarset available input. A variety of inputs exist in the script to allow specifying which version of the UBM model this collection is designed for. **-- Not necessary for final workflow --**
+> This was planned to be used as part of the final workflow, but due to GEE asset quota limitations the decision was made to limit the number of GEE assets by pre-processing the UBM input collection on the fly AND incorporate the input bands with the UBM output bands.
 
 ### `run_UBM_script.py`
-Script for taking the GEE asset exported by `define_and_export_input_collection.py` and running the UBM model of choice, then exports the model results to a GEE asset.
+Script for taking the GEE asset exported by `define_and_export_input_collection.py` and running the UBM model of choice, then exports the model results to a GEE asset. **-- Not necessary for final workflow --**
+> This was planned to be used as part of the final workflow, but due to GEE asset quota limitations the decision was made to limit the number of GEE assets by pre-processing the UBM input collection on the fly AND incorporate the input bands with the UBM output bands.
 
 ### `UBM_zonal_stats_script.py`
-Script for extracting zonal statistics from the UBM model and input images/collections, and exports the stats to a csv.
-See the `Zonal_Stats_Timeseries` folder for results.
+Script for extracting zonal statistics from the UBM model and input images/collections, and exports the stats to a csv. Options for calculating zonal stats for an individual watershed geometry or to loop through ALL Utah watersheds (including statewide and integrated GSL basin).
+See the `Zonal_Stats_Timeseries` folder for results (**will be updated soon with final results for all watersheds between 2005-2024**).
+
+### `UBM_zonal_stats_script_resume_safe.py`
+Script for extracting zonal statistics from the UBM model and input images/collections, and exports the stats to a csv. Options for calculating zonal stats for an individual watershed geometry or to loop through ALL Utah watersheds (including statewide and integrated GSL basin).
+See the `Zonal_Stats_Timeseries` folder for results (**will be updated soon with final results for all watersheds between 2005-2024**). This version is essentially identical to `UBM_zonal_stats_script.py` but allows the user to stop the process and resume later by checking which watersheds have already been processed.
 
 ## Notebooks Overview (for development and testing purposes)
 
 ### `gNATSGO_machine_learning_gap_filling_update.ipynb`
 Jupyter Notebook used as the working-space for setting up, training, validating, and exporting a machine learning derived (random forest) map of root zone soil thickness throughout utah, based on gNATSGO data. 
+
+### `UT_Irrigation_Raster_Creation.ipynb`
+>Beware: This is a jumbled 'playground' notebook and is not the cleanest or easiest to read through.
+
+Notebook used as the working-space for establishing a way to create irrigation rasters for irrigation months of 2005-2024, utilizing data from the most recent UDWR Water Budget and Water Related Land Use (WRLU) shapefiles. Creates and exports irrigation rasters to be used to account for anthropogenic introduction of water as part of the UBM model.
 
 ### `snowmelt_testing.ipynb`
 Jupyter Notebook used as the working-space for testing the snowmelt + precipitation datasets, ensuring the approach used is valid.
@@ -218,11 +246,11 @@ Essentially breaking down the cases where inputs > storage or when inputs < stor
 ___________________
 
 #### List of inputs for original model
-`soil porosity`, `soil thickness`, `field capacity`, `wilting point`, `bedrock hydraulic conductivuty (K; Geo K)`, `precipitation as water`, `snowmelt`, and `PET`
+`soil porosity`, `soil thickness`, `field capacity`, `wilting point`, `bedrock hydraulic conductivuty (K; Geo K)`, `precipitation as water`, `snowmelt`, `irrigation`, and `PET`
 
 ### <u> **Original UBM Model Workflow** - PET as Input</u>
 
-1) `Available_Water = Precipitation + Snowmelt + Soil_Water_End_Of_Previous_Timestep`
+1) `Available_Water = Precipitation + Snowmelt + Irrigation + Soil_Water_End_Of_Previous_Timestep`
     - Initial (first timestep) assumption: `Soil_Water_End_Of_Previous_Timestep = Field_Capacity`**
 
 2) `Max_Soil_Moisture = Soil_Porosity * Soil_Thickness = Available_Void_Space`
@@ -272,7 +300,7 @@ _________________________
 
 ### <u>**Modified UBM Model 1 Workflow** - ET as Input</u> 👇👇👇
 
-1) `Available_Water_Initial = Precipitation + Snowmelt + Soil_Water_End_Of_Previous_Timestep` - add up the input sources of water
+1) `Available_Water_Initial = Precipitation + Snowmelt + Irrigation + Soil_Water_End_Of_Previous_Timestep` - add up the input sources of water
     - For the first timestep, set the assumption: `Soil_Water_End_Of_Previous_Timestep = Field_Capacity` 
 
 2) `Available_Water = Available_Water_Initial - min(AET, Available_Water_Initial)` - **KEY: subtract `AET` from input sources of water**, unless AET is larger then just say available water is NONE!
@@ -308,7 +336,7 @@ ______________________________________
 
 ### <u>**Modified UBM Model 2 Workflow** - ET & Soil Moisture Data as Inputs</u> 👇👇👇
 
-1) `Available_Water_Initial = Precipitation + Snowmelt + Soil_Water_Profile_Data_From_Beginning_of_Timestep` - add up the input sources of water, **KEY: this time using soil moisture information from observations or other models** instead of a water balance approach
+1) `Available_Water_Initial = Precipitation + Snowmelt + Irrigation + Soil_Water_Profile_Data_From_Beginning_of_Timestep` - add up the input sources of water, **KEY: this time using soil moisture information from observations or other models** instead of a water balance approach
 
 2) `Available_Water = Available_Water_Initial - min(AET, Available_Water_Initial)` - **KEY: subtract `AET` from input sources of water**, unless AET is larger then just say available water is NONE!
     - If AET is smaller than available water, AET will be subtracted from available water amounts. If it is larger, there is no water available and we make sure it is not a negative (physically impossible) value
