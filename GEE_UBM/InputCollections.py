@@ -839,7 +839,7 @@ class InputCollections:
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_DisALEXI = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
             OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             # OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
@@ -861,7 +861,7 @@ class InputCollections:
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_ensemble = GenericCollection(col.select(['et_ensemble_mad']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et_ensemble_mad', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et_ensemble_mad', 'AET')
             OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             # OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
@@ -883,7 +883,7 @@ class InputCollections:
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_PTJPL = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
@@ -905,7 +905,7 @@ class InputCollections:
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_SIMS = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
@@ -927,7 +927,7 @@ class InputCollections:
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_SSEBOP = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
@@ -949,7 +949,7 @@ class InputCollections:
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_EEMETRIC = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
@@ -971,7 +971,7 @@ class InputCollections:
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_GEESEBAL = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).MosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
             # OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)

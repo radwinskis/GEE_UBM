@@ -104,7 +104,7 @@ elif zonal_stats_region == 'Sanpete_Watershed':
 #------------------------------#
 ###### PRIMARY USER INPUT ###### ⚠️⚠️⚠️
 #------------------------------#
-input_UBM_collection_asset_id = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs/Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_POLKsatM_PRISMSNOM_ETPTJPL_IRRIm_M_m3' 
+input_UBM_collection_asset_id = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs/Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_POLKsatM_PRISMSNOM_ETSSEBOP_IRRIm_M_m3' 
 
 asset_name = input_UBM_collection_asset_id.split('/')[-1]
 
