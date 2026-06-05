@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "GEE_UBM"
-version = "0.1.0"
+version = "1.0.0"
 description = "Utah Soil Water Balance Calculations via Google Earth Engine"
 authors = [
     {name = "Mark Radwin", email = "mradwin@utah.gov"},
@@ -17,7 +17,8 @@ dependencies = [
     "earthengine-api",
     "RadGEEToolbox",
     "numpy",
-    "pandas"
+    "pandas",
+    "google-auth"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
