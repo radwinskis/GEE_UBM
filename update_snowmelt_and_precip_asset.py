@@ -10,17 +10,23 @@ credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\
 ee.Initialize(credentials=credentials)
 
 ############### USER INPUTS #################
+#############################################
+#############################################
 precip_data_type = 'GRIDMET_daily_precip'  # Options: 'PRISM_daily_precip', 'DAYMET_daily_precip', or 'GRIDMET_daily_precip'
 start_year = 2004
 end_year = 2025 # NOTE: This is exclusive; the last year processed will be end_year - 1. i.e for end_year = 2025, the last year processed will be 2024.
 boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
+#############################################
+#############################################
+#############################################
+#-------------------------------------------------------------------------------------------------------------------------------------------#
+
 ############### CHECKING USER INPUTS #################
 if precip_data_type not in ['PRISM_daily_precip', 'DAYMET_daily_precip', 'GRIDMET_daily_precip']:
     raise ValueError("Invalid precip_data_type. Choose from 'PRISM_daily_precip', 'DAYMET_daily_precip', or 'GRIDMET_daily_precip'.")
 if end_year <= start_year:
-    raise ValueError("end_year must be greater than start_year.")\
+    raise ValueError("end_year must be greater than start_year.")
 ############### CHECK EXISTING ASSET #################
-
 if precip_data_type == 'PRISM_daily_precip':
     asset_name = 'projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'
 elif precip_data_type == 'DAYMET_daily_precip':
@@ -81,12 +87,29 @@ for year in years:
     precip = base_class.get_precip(precip_data_type)
     # precip_dates = precip.dates
     precip_scale = ee.Number(precip.image_grab(0).projection().nominalScale())
-    soil_water_input = base.calculate_daily_soil_input(precip_collection=precip, delta_swe_collection=delta_swe)
-    # soil_water_input_dates = soil_water_input.dates
-    soil_water_input_scale = ee.Number(soil_water_input.image_grab(0).projection().nominalScale())
-    monthly_soil_water_input = soil_water_input.monthly_sum_collection
-    monthly_soil_water_input_dates = monthly_soil_water_input.dates
+    if 'DAYMET' in precip_data_type:
+        temperature = base_class.get_temperature('DAYMET_daily_temp')
+    elif 'PRISM' in precip_data_type:
+        temperature = base_class.get_temperature('PRISM_daily_temp')
+    elif 'GRIDMET' in precip_data_type:
+        temperature = base_class.get_temperature('GRIDMET_daily_temp')
+    else:
+        raise ValueError("Invalid precip_data_type. Choose from 'PRISM_daily_precip', 'DAYMET_daily_precip', or 'GRIDMET_daily_precip'.")
+    
 
+    ###### Calculate the fraction of soil water input from precip + snowmelt ######
+    soil_water_input = base.calculate_daily_soil_input(precip_collection=precip, temp_collection=temperature, delta_swe_collection=delta_swe)
+    ###############################################################################
+
+    # soil_water_input_dates = soil_water_input.dates
+    # Determine scale from soil_water_input
+    soil_water_input_scale = ee.Number(soil_water_input.image_grab(0).projection().nominalScale())
+    print(f"Soil water input scale (m): {soil_water_input_scale.getInfo()}")
+    # Aggregate to monthly sum collection
+    monthly_soil_water_input = soil_water_input.monthly_sum_collection
+    # Get dates list
+    monthly_soil_water_input_dates = monthly_soil_water_input.dates
+    # Export to asset
     export = monthly_soil_water_input.export_to_asset_collection(asset_collection_path=asset_name,
                                                                 region=boundary,
                                                                 scale=soil_water_input_scale.getInfo(),

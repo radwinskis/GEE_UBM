@@ -48,7 +48,8 @@ class SnowMeltCollection:
         # We look for an image where time_diff is within 25 hours, 
         # AND the match is strictly earlier than the source.
         max_diff_filter = ee.Filter.maxDifference(
-            difference=25 * 60 * 60 * 1000, # 25 hours (in millis)
+            # difference=25 * 60 * 60 * 1000, # 25 hours (in millis)
+            difference=72 * 60 * 60 * 1000, # 72 hours (in millis)
             leftField='system:time_start',
             rightField='system:time_start'
         )
@@ -111,103 +112,115 @@ class SnowMeltCollection:
             gc = gc.mask_to_polygon(self.geometry)
         return gc
 
-    def calculate_daily_soil_input(self, precip_collection, delta_swe_collection=None, joinby='date'):
+    def calculate_daily_soil_input(self, precip_collection, temp_collection, delta_swe_collection=None, joinby='date', target_scale=None):
         """
-        Calculates Daily Soil Water Input by combining SNODAS Delta-SWE with a Precipitation Collection.
-        As the UBM will mainly be used for monthly timesteps, this is necessary to account for daily processes and 
-        allow for accurate monthly aggregations from daily data. Depending on the value of Delta_SWE, calculation of water input varies such that 
-        Input = Precip - Delta_SWE for accumulation days (Delta_SWE > 0) and Input = Precip + |Delta_SWE|*0.9 for ablation days (Delta_SWE <= 0).
-        The 0.9 factor accounts for sublimation losses during melt, assuming roughly 10% sublimation. The expression `Input = Precip - Delta_SWE` accounts for
-        precipitation as rain or snow, such that there is no need to account for phase changes separately.
-
-        Features:
-        - Reprojects/Resamples SNODAS to match the Precipitation grid.
-        - Applies Reverse Mass Balance Logic: Input = Precip - Delta_SWE.
-        - Handles Accumulation (clamping negative input) and Ablation (applying sublimation).
+        Calculates Daily Soil Water Input using Temperature Partitioning.
+        
+        Logic:
+        1. Rain = Precip where Mean Temp > 0°C. (Solid precip is ignored/stored).
+        2. Melt = |Delta SWE| where Delta SWE < 0. (Snow leaving the pack).
+        3. Input = Rain + Melt (with 0.9 sublimation factor on melt).
 
         Args:
-            precip_collection (GenericCollection): The precipitation collection (e.g., from InputCollections).
-                                                   Must have a band named 'precipitation'.
-            delta_swe_collection (GenericCollection, optional): The output of calculate_daily_delta_swe(). 
-                                                                If None, it is calculated automatically.
-            joinby (str, optional): The property to join collections by. Defaults to 'date'. Options: 'date' or 'system:time_start'.
+            precip_collection (GenericCollection): Precipitation data (band: 'precipitation').
+            temp_collection (GenericCollection): Mean Temperature data (band: 'temperature').
+            delta_swe_collection (GenericCollection, optional): Output of calculate_daily_delta_swe().
+            joinby (str): 'date' or 'system:time_start'.
+            target_scale (int, optional): If provided, resamples all data to this scale (in meters). If None, uses precip_collection's native scale.
 
         Returns:
-            GenericCollection: A GenericCollection containing 'precip_and_snowmelt_input' (mm).
+            GenericCollection: Collection with band 'precip_and_snowmelt_input' (mm).
         """
-        # 1. Get Delta SWE (if not provided)
+        # Get Delta SWE (if not provided)
         if delta_swe_collection is None:
             delta_swe_collection = self.calculate_daily_delta_swe()
 
-        # 2. Extract collections
+        # Extract Collections
+        # We assume temp_collection is already processed to 'temperature' band
         delta_col = delta_swe_collection.collection.select('delta_swe')
         precip_col = precip_collection.collection.select('precipitation')
+        temp_col = temp_collection.collection.select('temperature')
 
-        # 3. Capture Target Projection from Precipitation (The "Master Grid")
-        # We will force SNODAS to match this grid.
+        # Define Join
+        if joinby == 'date':
+            filter_join = ee.Filter.equals(leftField='Date_Filter', rightField='Date_Filter')
+        elif joinby == 'system:time_start':
+            filter_join = ee.Filter.equals(leftField='system:time_start', rightField='system:time_start')
+        else:
+            raise ValueError("joinby must be 'date' or 'system:time_start'.")
+        
+        join = ee.Join.inner()
+
+        # Join Precip + Temp (To calculate Rain)
+        precip_temp_joined = join.apply(precip_col, temp_col, filter_join)
+        
+        rain_threshold = 1.5  # Degrees Celsius
+
+        def calc_rain(feature):
+            p_img = ee.Image(feature.get('primary'))
+            t_img = ee.Image(feature.get('secondary'))
+            
+            # Rain = Precip where Temp > rain_threshold.
+            # If Temp <= rain_threshold, we assume it is snow and ignore it (it will appear as Melt later).
+            rain = p_img.where(t_img.lte(rain_threshold), 0)
+            
+            return rain.rename('rain').copyProperties(p_img, ['system:time_start', 'Date_Filter'])
+        
+        rain_col = ee.ImageCollection(precip_temp_joined.map(calc_rain))
+
+        # Join Rain + Delta SWE (To add Melt)
+        rain_melt_joined = join.apply(rain_col, delta_col, filter_join)
+
+        # Capture Projection for Resampling (From Precip/Rain)
         reference_proj = precip_col.first().projection()
-        reference_scale = reference_proj.nominalScale()
+        # reference_scale = reference_proj.nominalScale()
+        if target_scale is not None:
+            reference_scale = ee.Number(target_scale)
+        else:
+            reference_scale = reference_proj.nominalScale()
         target_proj = ee.Projection('EPSG:32612').atScale(reference_scale)
 
-        # 4. Join Precip to Delta SWE with options to use 'date' or 'system:time_start' depending on what is available from input datasets
-        if joinby == 'date':
-            filter_date = ee.Filter.equals(leftField='Date_Filter', rightField='Date_Filter')
-        elif joinby == 'system:time_start':
-            filter_date = ee.Filter.equals(leftField='system:time_start', rightField='system:time_start')
-        else:
-            raise ValueError("joinby must be either 'date' or 'system:time_start'.")
-        # Use inner join to ensure only matching dates are processed
-        join = ee.Join.inner()
-        combined_col = join.apply(delta_col, precip_col, filter_date)
+        def solve_balance(feature):
+            rain_img = ee.Image(feature.get('primary'))
+            delta_img_native = ee.Image(feature.get('secondary'))
 
-        # 5. Apply Mass Balance Logic with Grid Alignment
-        def solve_mass_balance(feature):
-            # Inner join returns features with 'primary' (Delta) and 'secondary' (Precip)
-            delta_img_native = ee.Image(feature.get('primary'))
-            precip_img = ee.Image(feature.get('secondary'))
-            
-            # Reproject Delta SWE to match Precip grid.
-            # Use 'bilinear' resampling to smooth SNODAS pixels into the Precip grid.
-            # delta_img = delta_img_native.reproject(
-            #     crs=reference_proj).resample('bilinear')
-            
-            precip_img = precip_img.resample('bilinear').reproject(target_proj)
-            # SNODAS: reduce only if finer than precip scale; else upsample
-            native_scale = ee.Number(delta_img_native.projection().nominalScale())
-            is_finer = native_scale.lt(reference_scale)
+            # Melt = |Delta| where Delta < 0. Else 0.
+            melt_native = delta_img_native.where(delta_img_native.gt(0), 0).abs().multiply(0.9)
 
-            delta_img = ee.Image(ee.Algorithms.If(
-                is_finer,
-                delta_img_native.reduceResolution(
-                    reducer=ee.Reducer.mean(), maxPixels=65536),
-                delta_img_native.resample('bilinear')
-            )).reproject(target_proj)
+            rain_img = rain_img.resample('bilinear').reproject(target_proj)
             
-            delta = delta_img.select('delta_swe')
-            P = precip_img.select('precipitation')
-            
-            # --- Handling different scenarios  ---
-            # Case A: Accumulation (Delta > 0)
-            # Snowpack captured the Precip. Input = P - Delta.
-            # Clamp to 0 to prevent negative input (if Delta > P due to noise).
-            input_accum = P.subtract(delta).max(0)
-            
-            # Case B: Ablation/Steady (Delta <= 0)
-            # Snowpack released water or Rain-on-Snow. Input = P + Melt.
-            # Melt = |Delta|. Sublimation (0.9) applied ONLY to Melt.
-            melt_component = delta.abs().multiply(0.9)
-            input_ablation = P.add(melt_component)
-            
-            # Combine scenarios using where(), such that delta > 0 uses 
-            # accumulation logic and delta <= 0 uses ablation logic
-            daily_input = input_ablation.where(delta.gt(0), input_accum)
-            
-            # the output image has a band named 'precip_and_snowmelt_input' and retains time properties
-            return daily_input.rename('precip_and_snowmelt_input')\
-                .copyProperties(delta_img_native, ['system:time_start', 'Date_Filter']).set('system:time_start', delta_img_native.get('system:time_start'))
+            # native_scale = ee.Number(delta_img_native.projection().nominalScale())
+            # is_finer = native_scale.lt(reference_scale)
 
-        # Apply the mass balance arithemtic over the combined collection
-        final_col = ee.ImageCollection(combined_col.map(solve_mass_balance))
+            # # SNODAS: reduce only if finer than precip scale; else upsample
+            # delta_img = ee.Image(ee.Algorithms.If(
+            #     is_finer,
+            #     delta_img_native.reduceResolution(
+            #         reducer=ee.Reducer.mean(), maxPixels=65536),
+            #     delta_img_native.resample('bilinear')
+            # )).reproject(target_proj)
+            
+            # delta = delta_img.select('delta_swe')
+            rain = rain_img #.select('rain')
+            
+            # --- Melt Calculation ---
+            # If Delta < 0: Melt + Sublimation occurred.
+            # Melt = |Delta| * 0.9 (assuming 10% sublimation)
+            # If Delta > 0: Accumulation. Melt = 0.
+            
+            # melt = delta.where(delta.gt(0), 0).abs().multiply(0.9)
+
+            melt = melt_native.reduceResolution(
+                reducer=ee.Reducer.mean(), maxPixels=65536
+            ).reproject(target_proj) #.select('delta_swe')
+            
+            # --- Total Input ---
+            total_input = rain.add(melt)
+            
+            return total_input.rename('precip_and_snowmelt_input')\
+                .copyProperties(rain_img, ['system:time_start', 'Date_Filter'])
+
+        final_col = ee.ImageCollection(rain_melt_joined.map(solve_balance))
 
         # Wrap result
         gc = GenericCollection(
@@ -217,22 +230,14 @@ class SnowMeltCollection:
             boundary=self.geometry
         )
         
-        # Mask to geometry if provided
         if self.geometry:
             gc = gc.mask_to_polygon(self.geometry)
             
         return gc
-
+    
     def get_monthly_delta_swe(self, daily_delta_collection=None):
         """
         Aggregates daily Delta SWE to Monthly Net Change in SWE.
-        
-        Args:
-            daily_delta_collection (GenericCollection, optional): Result from calculate_daily_delta_swe().
-                                   If None, will calculate it on the fly.
-        
-        Returns:
-            GenericCollection: Monthly summed Delta SWE.
         """
         if daily_delta_collection is None:
             daily_delta_collection = self.calculate_daily_delta_swe()
@@ -241,13 +246,7 @@ class SnowMeltCollection:
 
     def export_collection(self, collection_obj, asset_path, region=None, scale=1000, crs='EPSG:32612', filename_prefix='export_'):
         """
-        Wrapper to export a collection to GEE Asset using GenericCollection's export tool.
-        
-        Args:
-            collection_obj (GenericCollection): The collection to export (Delta SWE or Soil Input).
-            asset_path (str): 'projects/ut-gee-ugs-bsf-dev/assets/...'
-            region (ee.Geometry, optional): defaults to self.geometry
-            scale (int): defaults to 1000 (1km)
+        Wrapper to export a collection to GEE Asset.
         """
         if region is None:
             region = self.geometry

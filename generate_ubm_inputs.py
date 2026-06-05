@@ -68,6 +68,8 @@ def get_ubm_input_collection(
         dynamic_collections_to_use = [snowmelt_and_precip_collection, irrigation_collection, PET_collection]
     elif UBM_model_to_use == 'Modified_UBM_1':
         dynamic_collections_to_use = [snowmelt_and_precip_collection, irrigation_collection, AET_collection]
+    elif UBM_model_to_use == 'Modified_UBM_1_Testing_Updates':
+        dynamic_collections_to_use = [snowmelt_and_precip_collection, irrigation_collection, AET_collection]
     elif UBM_model_to_use == 'Modified_UBM_2':
         dynamic_collections_to_use = [snowmelt_and_precip_collection, irrigation_collection, AET_collection, soil_moisture_collection]
     else:
@@ -106,6 +108,9 @@ def get_ubm_input_collection(
             pet = base_class.get_PET(PET_collection)
             timeseries_collections_list = [snowmelt_and_precip, irrigation, pet]
         elif UBM_model_to_use == 'Modified_UBM_1':
+            aet = base_class.get_AET(AET_collection) 
+            timeseries_collections_list = [snowmelt_and_precip, irrigation, aet]
+        elif UBM_model_to_use == 'Modified_UBM_1_Testing_Updates':
             aet = base_class.get_AET(AET_collection) 
             timeseries_collections_list = [snowmelt_and_precip, irrigation, aet]
         elif UBM_model_to_use == 'Modified_UBM_2':
@@ -151,13 +156,18 @@ def get_abbreviation_dicts():
         'UGS_wiltingPoint': 'UGSWP',
         'HiHydroSoilWiltPoint': 'HHSWP',
         'POLARIS_K_Sat_monthly': 'POLKsatM',
+        'POLARIS_K_Sat_monthly_scaled': 'POLKsatSdM',
         'POLARIS_K_Sat_daily': 'POLKsatD',
+        'POLARIS_K_Sat_daily_scaled': 'POLKsatSdD',
         'HiHydroSoil_K_Sat_monthly': 'HSSKsatM',
+        'HiHydroSoil_K_Sat_monthly_scaled': 'HSSKsatSdM',
         'HiHydroSoil_K_Sat_daily': 'HSSKsatD',
+        'HiHydroSoil_K_Sat_daily_scaled': 'HSSKsatSdD',
         'UGS_Geo_K_monthly': 'UGSGeoKM',
         'UGS_Geo_K_daily': 'UGSGeoKD',
         'USGS_Geo_K_monthly': 'USGSGeoKM',
-        'USGS_Geo_K_daily': 'USGSGeoKD'
+        'USGS_Geo_K_daily': 'USGSGeoKD',
+        'USGS_NGMD_GeoK_Scaled_Monthly': 'NGMDGKSdM'
     }
 
     dynamic_collection_abbreviation_dict = {
@@ -173,13 +183,13 @@ def get_abbreviation_dicts():
         'ERA5_monthly_ET': 'ERA5ETM',
         'MODIS_ET': 'MODISETD',
         'MODIS_monthly_ET': 'MODISETM',
-        'OPEN_ET_DisALEXI': 'ETDisALEXI',
+        'OPEN_ET_DisALEXI': 'ETDALEXI',
         'OPEN_ET_ensemble': 'ETEns',
         'OPEN_ET_PTJPL': 'ETPTJPL',
         'OPEN_ET_SIMS': 'ETSIMS',
-        'OPEN_ET_SSEBOP': 'ETSSEBOP',
-        'OPEN_ET_EEMETRIC': 'ETEEMETRIC',
-        'OPEN_ET_GEESEBAL': 'ETGEESEBAL',
+        'OPEN_ET_SSEBOP': 'ETSBOP',
+        'OPEN_ET_EEMETRIC': 'ETEMTRIC',
+        'OPEN_ET_GEESEBAL': 'ETGSEBAL',
         'SMAP_daily_soil': 'SMAPSoilD',
         'SMAP_monthly_soil': 'SMAPSoilM',
         'SMAP_daily_soil_aggregate': 'SMAPSoilDAgg',

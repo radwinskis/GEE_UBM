@@ -1,4 +1,5 @@
 import ee
+import datetime
 from RadGEEToolbox import LandsatCollection, GetPalette, GenericCollection
 
 class InputCollections: 
@@ -12,6 +13,7 @@ class InputCollections:
         Output collections include:
         - Soil Thickness Rasters:
             - Random_Forest_Utah_Model_30m Soil Thickness (rootzone, trained on gNATSGO)
+            - Random_Forest_Utah_Model_800m Soil Thickness (rootzone, trained on gNATSGO)
             - Random_Forest_Utah_Model_1km Soil Thickness (rootzone, trained on gNATSGO)
             - ISRIC Soil Thickness to Bedrock
             - gNATSGO Soil Thickness (rootzone)
@@ -39,6 +41,14 @@ class InputCollections:
             - GRIDMET Monthly Precipitation
             - CHIRPS Daily Precipitation
             - CHIRPS Monthly Precipitation
+        
+        - Temperature Collections:
+            - PRISM Daily Temperature
+            - PRISM Monthly Temperature
+            - DAYMET Daily Temperature
+            - DAYMET Monthly Temperature
+            - GRIDMET Daily Temperature
+            - GRIDMET Monthly Temperature
         
         - Snowmelt Collections:
             - ERA5 Daily Snowmelt
@@ -90,41 +100,41 @@ class InputCollections:
     """
     # target_proj = ee.Projection('EPSG:32612').atScale(1000)
 
-    @classmethod
-    def _to_1km_focal(cls, img, work_proj=None, radius=500):
-        target_proj = ee.Projection('EPSG:32612').atScale(1000)
-        # work_proj: fine-scale metric grid to run the kernel on
-        # if work_proj is None:
-        #     # Force UTM 12N at the image's native scale
-        #     native_scale = img.projection().nominalScale()
-        #     wp = ee.Projection('EPSG:32612').atScale(native_scale)
-        # else: 
-        #     native_scale = work_proj.nominalScale()
-        #     wp = ee.Projection('EPSG:32612').atScale(native_scale)
-        # img_fine = img.reproject(wp)
-        wp = work_proj or img.projection()
-        img_fine = img.setDefaultProjection(wp)
-        agg = img_fine.focal_mean(radius=radius, kernelType='square', units='meters')
-        return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
-    @classmethod
-    def _to_1km_reduceResolution(cls, img, work_proj=None):
-        target_proj = ee.Projection('EPSG:32612').atScale(1000)
-        # work_proj: fine-scale metric grid to run the kernel on
-        wp = work_proj or img.projection()
-        # img_fine = img.reproject(wp)
-        img_fine = img.setDefaultProjection(wp)
-        agg = img_fine.reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)
-        return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
-    @classmethod
-    def _to_1km_bilinear(cls, img, work_proj=None):
-        target_proj = ee.Projection('EPSG:32612').atScale(1000)
-        # work_proj: fine-scale metric grid to run the kernel on
-        wp = work_proj or img.projection()
-        # img_fine = img.reproject(wp)
-        img_fine = img.setDefaultProjection(wp)
-        agg = img_fine.resample('bilinear')
-        return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
-   
+    # @classmethod
+    # def _to_1km_focal(cls, img, work_proj=None, radius=500):
+    #     target_proj = ee.Projection('EPSG:32612').atScale(1000)
+    #     # work_proj: fine-scale metric grid to run the kernel on
+    #     # if work_proj is None:
+    #     #     # Force UTM 12N at the image's native scale
+    #     #     native_scale = img.projection().nominalScale()
+    #     #     wp = ee.Projection('EPSG:32612').atScale(native_scale)
+    #     # else: 
+    #     #     native_scale = work_proj.nominalScale()
+    #     #     wp = ee.Projection('EPSG:32612').atScale(native_scale)
+    #     # img_fine = img.reproject(wp)
+    #     wp = work_proj or img.projection()
+    #     img_fine = img.setDefaultProjection(wp)
+    #     agg = img_fine.focal_mean(radius=radius, kernelType='square', units='meters')
+    #     return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
+    # @classmethod
+    # def _to_1km_reduceResolution(cls, img, work_proj=None):
+    #     target_proj = ee.Projection('EPSG:32612').atScale(1000)
+    #     # work_proj: fine-scale metric grid to run the kernel on
+    #     wp = work_proj or img.projection()
+    #     # img_fine = img.reproject(wp)
+    #     img_fine = img.setDefaultProjection(wp)
+    #     agg = img_fine.reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)
+    #     return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
+    # @classmethod
+    # def _to_1km_bilinear(cls, img, work_proj=None):
+    #     target_proj = ee.Projection('EPSG:32612').atScale(1000)
+    #     # work_proj: fine-scale metric grid to run the kernel on
+    #     wp = work_proj or img.projection()
+    #     # img_fine = img.reproject(wp)
+    #     img_fine = img.setDefaultProjection(wp)
+    #     agg = img_fine.resample('bilinear')
+    #     return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
+
     _shapefiles = None
     
     @classmethod
@@ -139,11 +149,36 @@ class InputCollections:
                 'Utah_Regional_Boundary': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary"),
             }
         return cls._shapefiles
+    
+    def _resample_focal(self, img, work_proj=None, radius=None):
+        wp = work_proj or img.projection()
+        img_fine = img.setDefaultProjection(wp)
+        
+        # If no radius is provided, dynamically scale it to half the target resolution
+        r = radius or (self.target_scale / 2)
+        agg = img_fine.focal_mean(radius=r, kernelType='square', units='meters')
+        
+        return agg.reproject(self.target_proj).set('system:time_start', img.get('system:time_start'))
+    
+    def _resample_reduceResolution(self, img, work_proj=None):
+        wp = work_proj or img.projection()
+        img_fine = img.setDefaultProjection(wp)
+        
+        # Final aggregation to the requested target scale (30m, 800m, 1000m)
+        agg = img_fine.reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)
+        return agg.reproject(self.target_proj).set('system:time_start', img.get('system:time_start'))
 
-    @classmethod
-    def _get_soil_thickness_raster(cls, name):
+    def _resample_bilinear(self, img, work_proj=None):
+        wp = work_proj or img.projection()
+        img_fine = img.setDefaultProjection(wp)
+        agg = img_fine.resample('bilinear')
+        
+        return agg.reproject(self.target_proj).set('system:time_start', img.get('system:time_start'))
+
+    # @classmethod
+    def _get_soil_thickness_raster(self, name):
         """Retrieve the soil thickness raster. Each soil thickness raster is downsampled to 1 km resolution."""
-        Utah_Regional_Boundary = cls._get_shapefiles()['Utah_Regional_Boundary']
+        Utah_Regional_Boundary = self._get_shapefiles()['Utah_Regional_Boundary']
         target_proj = ee.Projection('EPSG:32612').atScale(1000)
         if name == 'ISRIC':
             image = ee.Image("projects/ut-gee-ugs-bsf-dev/assets/UT_regional_soil_depth_to_bedrock_cm_ISRIC")
@@ -161,42 +196,62 @@ class InputCollections:
             # col = col.mosaic().setDefaultProjection(native_proj).resample('bilinear')\
             #                     .reproject(crs=native_proj, scale=1000)
             col = col.mosaic()
-            col = cls._to_1km_focal(col, work_proj=native_proj)
+            col = self._resample_focal(col, work_proj=native_proj)
             return col.multiply(ee.Image(10)).clip(Utah_Regional_Boundary).rename('soil_thickness')
         elif name == 'gNATSGO_filled':
             # Fill gNATSGO gaps with ISRIC values
-            isric_image = cls._get_soil_thickness_raster('ISRIC').divide(ee.Image(10)) 
-            gNATSGO_image = cls._get_soil_thickness_raster('gNATSGO')
+            isric_image = self._get_soil_thickness_raster('ISRIC').divide(ee.Image(10)) 
+            gNATSGO_image = self._get_soil_thickness_raster('gNATSGO')
             filled_image = gNATSGO_image.unmask(isric_image)
             return filled_image.rename('soil_thickness')
         elif name == 'gNATSGO_filled_2_meter_cap':
             # Fill gNATSGO gaps with ISRIC values
-            isric_image = cls._get_soil_thickness_raster('ISRIC').min(2000)
-            gNATSGO_image = cls._get_soil_thickness_raster('gNATSGO')
+            isric_image = self._get_soil_thickness_raster('ISRIC').min(2000)
+            gNATSGO_image = self._get_soil_thickness_raster('gNATSGO')
             # isric_image = isric_image.reproject(gNATSGO_image.projection())
             filled_image = gNATSGO_image.unmask(isric_image)
             return filled_image.rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_30m':
-            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+            st_scalar_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_30m')
+            # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
+        elif name == 'Random_Forest_Utah_Model_800m':
+            st_scalar_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_800m')
+            # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_800m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_800m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_1km':
-            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+            st_scalar_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_1000m')
+            # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
+            
         else:
-            raise ValueError(f"Soil thickness raster '{name}' not found. Available options are: 'Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 'gNATSGO_filled', 'gNATSGO_filled_2_meter_cap'.")
+            raise ValueError(f"Soil thickness raster '{name}' not found. Available options are: 'Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_800m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 'gNATSGO_filled', 'gNATSGO_filled_2_meter_cap'.")
     
-    def __init__(self, start_date, end_date, soil_thickness_raster=None, resampling_method='focal_mean'):
+    def __init__(self, start_date, end_date, soil_thickness_raster=None, resampling_method='focal_mean', target_scale=1000):
         self.start_date = start_date
         self.end_date = end_date
         self.Utah_Regional_Boundary = self._get_shapefiles()['Utah_Regional_Boundary']
-        self.target_proj = ee.Projection('EPSG:32612').atScale(1000)
+        self.target_scale = target_scale
+        self.target_proj = ee.Projection('EPSG:32612').atScale(self.target_scale)
         if soil_thickness_raster is None:
-            self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_1km')
+            # self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_1km')
+            if target_scale == 30:
+                self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_30m')
+            elif target_scale == 800:
+                self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_800m')
+            elif target_scale == 1000:
+                self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_1km')
+            else:
+                self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_1km')
         elif isinstance(soil_thickness_raster, str):
-            if soil_thickness_raster in ['Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 'gNATSGO_filled', 'gNATSGO_filled_2_meter_cap']:
+            if soil_thickness_raster in ['Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_800m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 'gNATSGO_filled', 'gNATSGO_filled_2_meter_cap']:
                 self.soil_thickness_raster = self._get_soil_thickness_raster(soil_thickness_raster)
             else:
-                raise ValueError(f"Soil thickness raster '{soil_thickness_raster}' not found. Available options are: 'Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 'gNATSGO_filled', 'gNATSGO_filled_2_meter_cap'.")
+                raise ValueError(f"Soil thickness raster '{soil_thickness_raster}' not found. Available options are: 'Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_800m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 'gNATSGO_filled', 'gNATSGO_filled_2_meter_cap'.")
         else:
             self.soil_thickness_raster = soil_thickness_raster
+
+        
         
         if isinstance(resampling_method, str):
             if resampling_method in ['focal_mean', 'bilinear', 'reduceResolution']:
@@ -232,7 +287,10 @@ class InputCollections:
         Retrieves a static raster image by name. All static rasters are resampled to 1 km resolution.
         Options: 'UGS_porosity', 'HiHydroSoilPorosity', 'POLARIS_porosity', 'UGS_fieldCap', 
                  'HiHydroSoilFieldCap', 'OpenLandMapFieldCap', 'UGS_BMC_K', 
-                 'UGS_Geo_K', 'UGS_wiltingPoint', 'HiHydroSoilWiltPoint', 'POLARIS_K_Sat_monthly', 'POLARIS_K_Sat_daily', 'HiHydroSoil_K_Sat_monthly', 'HiHydroSoil_K_Sat_daily', 'USGS_Geo_K_monthly'
+                 'UGS_Geo_K', 'UGS_wiltingPoint', 'HiHydroSoilWiltPoint', 'POLARIS_K_Sat_monthly', 
+                 'POLARIS_K_Sat_monthly_scaled',  'POLARIS_K_Sat_daily', 'POLARIS_K_Sat_daily_scaled', 
+                 'HiHydroSoil_K_Sat_monthly', 'HiHydroSoil_K_Sat_monthly_scaled', 'HiHydroSoil_K_Sat_daily', 
+                 'HiHydroSoil_K_Sat_daily_scaled', 'USGS_Geo_K_monthly', 'USGS_NGMD_GeoK_Scaled_Monthly'
         Args:
             name (str): Name of the static raster to retrieve.
         Returns:
@@ -253,11 +311,11 @@ class InputCollections:
             #          .reproject(crs=native_proj, scale=1000)
 
             if self.resampling_method == 'bilinear':
-                image = self._to_1km_bilinear(image, work_proj=native_proj)
+                image = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                image = self._to_1km_focal(image, work_proj=native_proj)
+                image = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                image = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                image = self._resample_reduceResolution(image, work_proj=native_proj)
 
             UGS_porosity = image.clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return UGS_porosity
@@ -275,11 +333,11 @@ class InputCollections:
             # elif self.resampling_method == 'reduceResolution':
             #     HiHydroSoilPorosity = self._to_1km_reduceResolution(HiHydroSoilPorosity, work_proj=native_proj)
             if self.resampling_method == 'bilinear':
-                HiHydroSoilPorosity = self._to_1km_bilinear(HiHydroSoilPorosity, work_proj=native_proj)
+                HiHydroSoilPorosity = self._resample_bilinear(HiHydroSoilPorosity, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                HiHydroSoilPorosity = self._to_1km_focal(HiHydroSoilPorosity, work_proj=native_proj)
+                HiHydroSoilPorosity = self._resample_focal(HiHydroSoilPorosity, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                HiHydroSoilPorosity = self._to_1km_reduceResolution(HiHydroSoilPorosity, work_proj=native_proj)
+                HiHydroSoilPorosity = self._resample_reduceResolution(HiHydroSoilPorosity, work_proj=native_proj)
             HiHydroSoilPorosity = HiHydroSoilPorosity.unmask(0.5).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             # HiHydroSoilPorosity = col.mean().multiply(0.0001).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                         .reproject(crs=native_proj, scale=1000).unmask(0.5).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
@@ -299,11 +357,11 @@ class InputCollections:
             # elif self.resampling_method == 'reduceResolution':
             #     POLARIS_porosity = self._to_1km_reduceResolution(col.mean(), work_proj=native_proj)
             if self.resampling_method == 'bilinear':
-                POLARIS_porosity = self._to_1km_bilinear(col.mean(), work_proj=native_proj)
+                POLARIS_porosity = self._resample_bilinear(col.mean(), work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                POLARIS_porosity = self._to_1km_focal(col.mean(), work_proj=native_proj)
+                POLARIS_porosity = self._resample_focal(col.mean(), work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                POLARIS_porosity = self._to_1km_reduceResolution(col.mean(), work_proj=native_proj)
+                POLARIS_porosity = self._resample_reduceResolution(col.mean(), work_proj=native_proj)
             POLARIS_porosity = POLARIS_porosity.clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return POLARIS_porosity
         elif name == 'UGS_fieldCap':
@@ -314,11 +372,11 @@ class InputCollections:
             # UGS_fieldCap = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             if self.resampling_method == 'bilinear':
-                UGS_fieldCap = self._to_1km_bilinear(image, work_proj=native_proj)
+                UGS_fieldCap = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                UGS_fieldCap = self._to_1km_focal(image, work_proj=native_proj)
+                UGS_fieldCap = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                UGS_fieldCap = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                UGS_fieldCap = self._resample_reduceResolution(image, work_proj=native_proj)
             UGS_fieldCap = UGS_fieldCap.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return UGS_fieldCap
         elif name == 'HiHydroSoilFieldCap':
@@ -333,11 +391,11 @@ class InputCollections:
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             HiHydroSoilFieldCap = col.mean().multiply(0.0001)
             if self.resampling_method == 'bilinear':
-                HiHydroSoilFieldCap = self._to_1km_bilinear(HiHydroSoilFieldCap, work_proj=native_proj)
+                HiHydroSoilFieldCap = self._resample_bilinear(HiHydroSoilFieldCap, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                HiHydroSoilFieldCap = self._to_1km_focal(HiHydroSoilFieldCap, work_proj=native_proj)
+                HiHydroSoilFieldCap = self._resample_focal(HiHydroSoilFieldCap, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                HiHydroSoilFieldCap = self._to_1km_reduceResolution(HiHydroSoilFieldCap, work_proj=native_proj)
+                HiHydroSoilFieldCap = self._resample_reduceResolution(HiHydroSoilFieldCap, work_proj=native_proj)
             HiHydroSoilFieldCap = HiHydroSoilFieldCap.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return HiHydroSoilFieldCap
         elif name == 'OpenLandMapFieldCap':
@@ -353,11 +411,11 @@ class InputCollections:
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             OpenLandMapFieldCap = col.expression('(b("b0")+b("b10")+b("b30")+b("b60")+b("b100")+b("b200"))/6').divide(100)
             if self.resampling_method == 'bilinear':
-                OpenLandMapFieldCap = self._to_1km_bilinear(OpenLandMapFieldCap, work_proj=native_proj)
+                OpenLandMapFieldCap = self._resample_bilinear(OpenLandMapFieldCap, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                OpenLandMapFieldCap = self._to_1km_focal(OpenLandMapFieldCap, work_proj=native_proj)
+                OpenLandMapFieldCap = self._resample_focal(OpenLandMapFieldCap, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                OpenLandMapFieldCap = self._to_1km_reduceResolution(OpenLandMapFieldCap, work_proj=native_proj)
+                OpenLandMapFieldCap = self._resample_reduceResolution(OpenLandMapFieldCap, work_proj=native_proj)
             OpenLandMapFieldCap = OpenLandMapFieldCap.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return OpenLandMapFieldCap
         elif name == 'UGS_BMC_K':
@@ -367,13 +425,34 @@ class InputCollections:
             # UGS_BMC_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             if self.resampling_method == 'bilinear':
-                UGS_BMC_K = self._to_1km_bilinear(image, work_proj=native_proj)
+                UGS_BMC_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                UGS_BMC_K = self._to_1km_focal(image, work_proj=native_proj)
+                UGS_BMC_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                UGS_BMC_K = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                UGS_BMC_K = self._resample_reduceResolution(image, work_proj=native_proj)
             UGS_BMC_K = UGS_BMC_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('BMC_K')
             return UGS_BMC_K
+        elif name == 'USGS_NGMD_GeoK_Scaled_Monthly':
+            #units of m/month
+            valley_intensity = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_Valley_Intensity_100m')
+            k_mountain = 1 #0.005 #0.001 #0.1
+            k_valley = 0.00001 #0.000005 #0.00001 #0.001
+            geok_scalar = valley_intensity.multiply(k_valley - k_mountain).add(k_mountain).rename('GeoK_Scalar')
+            geok_raster_100m = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_GeoK_m_per_month_100m')
+            native_proj = geok_raster_100m.projection()
+            variable_mask_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_GeoK_Geomaterials_Variable_Mask_100m')
+            variable_mask = variable_mask_asset.gt(0)
+            global_k_scalar = 1.0
+            m_per_month_to_mm_per_month = 1000
+            geok_raster = geok_raster_100m.where(variable_mask, geok_raster_100m.multiply(geok_scalar)).multiply(global_k_scalar).multiply(m_per_month_to_mm_per_month).rename('Geo_K')
+            if self.resampling_method == 'bilinear':
+                NGMD_Geo_K = self._resample_bilinear(geok_raster, work_proj=native_proj)
+            elif self.resampling_method == 'focal_mean':
+                NGMD_Geo_K = self._resample_focal(geok_raster, work_proj=native_proj)
+            elif self.resampling_method == 'reduceResolution':
+                NGMD_Geo_K = self._resample_reduceResolution(geok_raster, work_proj=native_proj)
+            NGMD_Geo_K = NGMD_Geo_K.clip(self.Utah_Regional_Boundary).rename('Geo_K')
+            return NGMD_Geo_K
         elif name == 'UGS_Geo_K':
             # Assuming original units of m/day, converted to mm/day
             image = ee.Image("users/paulinkenbrandt/Geol_K")
@@ -381,11 +460,11 @@ class InputCollections:
             # UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             if self.resampling_method == 'bilinear':
-                UGS_Geo_K = self._to_1km_bilinear(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                UGS_Geo_K = self._to_1km_focal(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                UGS_Geo_K = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
             UGS_Geo_K = UGS_Geo_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
         elif name == 'UGS_Geo_K_daily':
@@ -395,11 +474,11 @@ class InputCollections:
             # UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             if self.resampling_method == 'bilinear':
-                UGS_Geo_K = self._to_1km_bilinear(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                UGS_Geo_K = self._to_1km_focal(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                UGS_Geo_K = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
             UGS_Geo_K = UGS_Geo_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
         elif name == 'UGS_Geo_K_monthly':
@@ -409,11 +488,11 @@ class InputCollections:
             # UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).multiply(ee.Image(30.4375)).max(ee.Image(0)).rename('Geo_K')
             if self.resampling_method == 'bilinear':
-                UGS_Geo_K = self._to_1km_bilinear(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                UGS_Geo_K = self._to_1km_focal(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                UGS_Geo_K = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                UGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
             UGS_Geo_K = UGS_Geo_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).multiply(ee.Image(30.4375)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
         elif name == 'USGS_Geo_K_monthly':
@@ -424,11 +503,11 @@ class InputCollections:
             # USGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).max(ee.Image(0)).rename('Geo_K')
             if self.resampling_method == 'bilinear':
-                USGS_Geo_K = self._to_1km_bilinear(image, work_proj=native_proj)
+                USGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                USGS_Geo_K = self._to_1km_focal(image, work_proj=native_proj)
+                USGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                USGS_Geo_K = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                USGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
             USGS_Geo_K = USGS_Geo_K.clip(self.Utah_Regional_Boundary).max(ee.Image(0)).rename('Geo_K')
             return USGS_Geo_K
         elif name == 'POLARIS_K_Sat_daily':
@@ -446,11 +525,34 @@ class InputCollections:
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
             POLARIS_ksat = converted_col.min()
             if self.resampling_method == 'bilinear':
-                POLARIS_ksat = self._to_1km_bilinear(POLARIS_ksat, work_proj=native_proj)
+                POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                POLARIS_ksat = self._to_1km_focal(POLARIS_ksat, work_proj=native_proj)
+                POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                POLARIS_ksat = self._to_1km_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+                POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+            POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
+            return POLARIS_ksat
+        elif name == 'POLARIS_K_Sat_daily_scaled':
+            # log10(cm/hr)
+            # Using the minimum of the profile for conservative estimate of infiltration rate
+            col = ee.ImageCollection('projects/sat-io/open-datasets/polaris/ksat_mean')
+            native_proj = col.first().projection()
+            def unlog_and_convert(img):
+                return ee.Image(10).pow(img).multiply(10).multiply(24) #.multiply(30.4375)
+
+            converted_col = col.map(unlog_and_convert)
+
+            # 2. Reduce the collection to find the minimum pixel value across all depths
+            # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
+            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
+            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            POLARIS_ksat = converted_col.min().multiply(scalar_image)
+            if self.resampling_method == 'bilinear':
+                POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'focal_mean':
+                POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'reduceResolution':
+                POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
             POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return POLARIS_ksat
         elif name == 'POLARIS_K_Sat_monthly':
@@ -468,11 +570,34 @@ class InputCollections:
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
             POLARIS_ksat = converted_col.min()
             if self.resampling_method == 'bilinear':
-                POLARIS_ksat = self._to_1km_bilinear(POLARIS_ksat, work_proj=native_proj)
+                POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                POLARIS_ksat = self._to_1km_focal(POLARIS_ksat, work_proj=native_proj)
+                POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                POLARIS_ksat = self._to_1km_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+                POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+            POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
+            return POLARIS_ksat
+        elif name == 'POLARIS_K_Sat_monthly_scaled':
+            # log10(cm/hr)
+            # Using the minimum of the profile for conservative estimate of infiltration rate
+            col = ee.ImageCollection('projects/sat-io/open-datasets/polaris/ksat_mean')
+            native_proj = col.first().projection()
+            def unlog_and_convert(img):
+                return ee.Image(10).pow(img).multiply(10).multiply(24).multiply(30.4375)
+
+            converted_col = col.map(unlog_and_convert)
+
+            # 2. Reduce the collection to find the minimum pixel value across all depths
+            # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
+            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
+            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            POLARIS_ksat = converted_col.min().multiply(scalar_image)
+            if self.resampling_method == 'bilinear':
+                POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'focal_mean':
+                POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'reduceResolution':
+                POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
             POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return POLARIS_ksat
         elif name == 'HiHydroSoil_K_Sat_daily':
@@ -480,11 +605,24 @@ class InputCollections:
             native_proj = col.first().projection()
             ksat = col.min().multiply(10) # convert from cm/day to mm/day
             if self.resampling_method == 'bilinear':
-                ksat = self._to_1km_bilinear(ksat, work_proj=native_proj)
+                ksat = self._resample_bilinear(ksat, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                ksat = self._to_1km_focal(ksat, work_proj=native_proj)
+                ksat = self._resample_focal(ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                ksat = self._to_1km_reduceResolution(ksat, work_proj=native_proj)
+                ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
+            ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
+            return ksat
+        elif name == 'HiHydroSoil_K_Sat_daily_scaled':
+            col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/ksat")
+            native_proj = col.first().projection()
+            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            ksat = col.min().multiply(10).multiply(scalar_image) # convert from cm/day to mm/day
+            if self.resampling_method == 'bilinear':
+                ksat = self._resample_bilinear(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'focal_mean':
+                ksat = self._resample_focal(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'reduceResolution':
+                ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
             ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return ksat
         elif name == 'HiHydroSoil_K_Sat_monthly':
@@ -492,11 +630,24 @@ class InputCollections:
             native_proj = col.first().projection()
             ksat = col.min().multiply(10).multiply(30.4375) # convert from cm/day to mm/month
             if self.resampling_method == 'bilinear':
-                ksat = self._to_1km_bilinear(ksat, work_proj=native_proj)
+                ksat = self._resample_bilinear(ksat, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                ksat = self._to_1km_focal(ksat, work_proj=native_proj)
+                ksat = self._resample_focal(ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                ksat = self._to_1km_reduceResolution(ksat, work_proj=native_proj)
+                ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
+            ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
+            return ksat
+        elif name == 'HiHydroSoil_K_Sat_monthly_scaled':
+            col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/ksat")
+            native_proj = col.first().projection()
+            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            ksat = col.min().multiply(10).multiply(30.4375).multiply(scalar_image) # convert from cm/day to mm/month
+            if self.resampling_method == 'bilinear':
+                ksat = self._resample_bilinear(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'focal_mean':
+                ksat = self._resample_focal(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'reduceResolution':
+                ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
             ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return ksat
         elif name == 'UGS_wiltingPoint':
@@ -506,11 +657,11 @@ class InputCollections:
             # UGS_wiltingPoint = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             if self.resampling_method == 'bilinear':
-                UGS_wiltingPoint = self._to_1km_bilinear(image, work_proj=native_proj)
+                UGS_wiltingPoint = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                UGS_wiltingPoint = self._to_1km_focal(image, work_proj=native_proj)
+                UGS_wiltingPoint = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                UGS_wiltingPoint = self._to_1km_reduceResolution(image, work_proj=native_proj)
+                UGS_wiltingPoint = self._resample_reduceResolution(image, work_proj=native_proj)
             UGS_wiltingPoint = UGS_wiltingPoint.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             return UGS_wiltingPoint
         elif name == 'HiHydroSoilWiltPoint':
@@ -525,20 +676,23 @@ class InputCollections:
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             HiHydroSoilWiltPoint = col.mean().multiply(0.0001)
             if self.resampling_method == 'bilinear':
-                HiHydroSoilWiltPoint = self._to_1km_bilinear(HiHydroSoilWiltPoint, work_proj=native_proj)
+                HiHydroSoilWiltPoint = self._resample_bilinear(HiHydroSoilWiltPoint, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
-                HiHydroSoilWiltPoint = self._to_1km_focal(HiHydroSoilWiltPoint, work_proj=native_proj)
+                HiHydroSoilWiltPoint = self._resample_focal(HiHydroSoilWiltPoint, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
-                HiHydroSoilWiltPoint = self._to_1km_reduceResolution(HiHydroSoilWiltPoint, work_proj=native_proj)
+                HiHydroSoilWiltPoint = self._resample_reduceResolution(HiHydroSoilWiltPoint, work_proj=native_proj)
             HiHydroSoilWiltPoint = HiHydroSoilWiltPoint.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             return HiHydroSoilWiltPoint
         else:
-            raise ValueError(f"Static raster '{name}' not found. Available options are: 'UGS_porosity', 'HiHydroSoilPorosity', 'POLARIS_porosity', 'UGS_fieldCap', 'HiHydroSoilFieldCap', 'OpenLandMapFieldCap', 'UGS_BMC_K', 'UGS_Geo_K_daily', 'UGS_Geo_K_monthly', 'POLARIS_K_Sat_daily', 'POLARIS_K_Sat_monthly', 'HiHydroSoil_K_Sat_daily', 'HiHydroSoil_K_Sat_monthly', 'UGS_wiltingPoint', 'HiHydroSoilWiltPoint'.")
+            raise ValueError(f"Static raster '{name}' not found. Available options are: 'UGS_porosity', 'HiHydroSoilPorosity', 'POLARIS_porosity', "
+            f"'UGS_fieldCap', 'HiHydroSoilFieldCap', 'OpenLandMapFieldCap', 'UGS_BMC_K', 'UGS_Geo_K_daily', 'UGS_Geo_K_monthly', 'USGS_NGMD_GeoK_Scaled_Monthly', 'POLARIS_K_Sat_daily', "
+            f"'POLARIS_K_Sat_daily_scaled', 'POLARIS_K_Sat_monthly', 'POLARIS_K_Sat_monthly_scaled', 'HiHydroSoil_K_Sat_daily', 'HiHydroSoil_K_Sat_daily_scaled', "
+            f"'HiHydroSoil_K_Sat_monthly', 'HiHydroSoil_K_Sat_monthly_scaled', 'UGS_wiltingPoint', 'HiHydroSoilWiltPoint'.")
         
     def get_precip(self, name):
         """
         Retrieves a precipitation collection by name.
-        Options: 'PRISM_daily_precip', 'PRISM_monthly_precip', 'DAYMET_daily_precip', 
+        Options: 'PRISM_daily_precip', 'PRISM800m_daily_precip', 'PRISM_monthly_precip', 'DAYMET_daily_precip', 
                  'DAYMET_monthly_precip', 'GRIDMET_daily_precip', 'GRIDMET_monthly_precip', 
                  'CHIIRPS_daily_precip', 'CHIIRPS_monthly_precip'
         Args:
@@ -561,6 +715,13 @@ class InputCollections:
             PRISM_daily_precip = self.get_precip('PRISM_daily_precip')
             PRISM_monthly_precip = PRISM_daily_precip.monthly_sum_collection #Creating monthly aggregation from daily dataset
             return PRISM_monthly_precip
+        elif name == 'PRISM800m_daily_precip':
+            # https://gee-community-catalog.org/projects/prism_daily/
+            # 800 m pixel size
+            # Units of mm/day
+            PRISM800_daily_precip = GenericCollection(collection=ee.ImageCollection("projects/sat-io/open-datasets/OREGONSTATE/PRISM_800_DAILY").select(['ppt']), start_date=self.start_date, end_date=self.end_date)\
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('ppt', 'precipitation')
+            return PRISM800_daily_precip
         elif name == 'DAYMET_daily_precip':
             # https://developers.google.com/earth-engine/datasets/catalog/NASA_ORNL_DAYMET_V4
             # 1 km pixel size
@@ -605,6 +766,81 @@ class InputCollections:
             return CHIIRPS_monthly_precip
         else:
             raise ValueError(f"Precipitation collection '{name}' not found. Available options are: 'PRISM_daily_precip', 'PRISM_monthly_precip', 'DAYMET_daily_precip', 'DAYMET_monthly_precip', 'GRIDMET_daily_precip', 'GRIDMET_monthly_precip', 'CHIIRPS_daily_precip', 'CHIIRPS_monthly_precip'.")
+        
+    def get_temperature(self, name):
+        """
+        Retrieves a temperature collection by name with units of degrees Celsius.
+        Options: 'PRISM_daily_temp', 'PRISM800m_daily_temp', 'PRISM_monthly_temp', 'DAYMET_daily_temp', 
+                 'DAYMET_monthly_temp', 'GRIDMET_daily_temp', 'GRIDMET_monthly_temp'
+        Args:
+            name (str): Name of the temperature collection to retrieve.
+        Returns:
+            Image Collection (GenericCollection): The requested temperature collection as RadGEEToolbox GenericCollection object.
+        """
+        if name == 'PRISM_daily_temp':
+            # https://developers.google.com/earth-engine/datasets/catalog/OREGONSTATE_PRISM_ANd
+            # 5.4 km pixel size
+            # Units of degrees Celsius
+            PRISM_daily_temp = GenericCollection(collection=ee.ImageCollection("OREGONSTATE/PRISM/ANd").select(['tmean']), start_date=self.start_date, end_date=self.end_date)\
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('tmean', 'temperature')
+            return PRISM_daily_temp
+        elif name == 'PRISM800m_daily_temp':
+            # https://gee-community-catalog.org/projects/prism_daily/
+            # 800 m pixel size
+            # Units of degrees Celsius
+            PRISM800_daily_temp = GenericCollection(collection=ee.ImageCollection("projects/sat-io/open-datasets/OREGONSTATE/PRISM_800_DAILY").select(['tmean']), start_date=self.start_date, end_date=self.end_date)\
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('tmean', 'temperature')
+            return PRISM800_daily_temp
+        elif name == 'PRISM_monthly_temp':
+            # https://developers.google.com/earth-engine/datasets/catalog/OREGONSTATE_PRISM_AN81m
+            # 5.4 km pixel size
+            # Units of degrees Celsius
+            # DATA ONLY AVAILABLE UP TO THE END OF 2020
+            PRISM_daily_temp = self.get_temperature('PRISM_daily_temp')
+            PRISM_monthly_temp = PRISM_daily_temp.monthly_sum_collection #Creating monthly aggregation from daily dataset
+            return PRISM_monthly_temp
+        elif name == 'DAYMET_daily_temp':
+            # https://developers.google.com/earth-engine/datasets/catalog/NASA_ORNL_DAYMET_V4
+            # 1 km pixel size
+            # Units of degrees Celsius
+            def daymet_mean_temp(img):
+                tmin = img.select('tmin')
+                tmax = img.select('tmax')
+                tmean = ee.Image(tmin.add(tmax).divide(2))
+                return ee.Image(tmean.copyProperties(img, img.propertyNames())).rename('tmean')
+            DAYMET_daily_temp = GenericCollection(collection=ee.ImageCollection("NASA/ORNL/DAYMET_V4").select(['tmin', 'tmax']), start_date=self.start_date, end_date=self.end_date)\
+                                    .mask_to_polygon(self.Utah_Regional_Boundary)
+            DAYMET_daily_temp = GenericCollection(collection=DAYMET_daily_temp.collection.map(daymet_mean_temp).select(['tmean'])).band_rename('tmean', 'temperature')
+            return DAYMET_daily_temp
+        elif name == 'DAYMET_monthly_temp':
+            # https://developers.google.com/earth-engine/datasets/catalog/NASA_ORNL_DAYMET_V4
+            # 1 km pixel size
+            # Units of degrees Celsius
+            DAYMET_daily_temp = self.get_temperature('DAYMET_daily_temp')
+            DAYMET_monthly_temp = DAYMET_daily_temp.monthly_sum_collection
+            return DAYMET_monthly_temp
+        elif name == 'GRIDMET_daily_temp':
+            # https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_GRIDMET
+            # 4.5 km pixel size
+            # Units of degrees Celsius
+            def gridmet_mean_temp(img):
+                tmin = img.select('tmmn').subtract(273.15) # converting from kelvin to celcius
+                tmax = img.select('tmmx').subtract(273.15) # converting from kelvin to celcius
+                tmean = ee.Image(tmin.add(tmax).divide(2))
+                return ee.Image(tmean.copyProperties(img, img.propertyNames())).rename('tmean')
+            GRIDMET_daily_temp = GenericCollection(collection=ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").select(['tmmn', 'tmmx']), start_date=self.start_date, end_date=self.end_date)\
+                                    .mask_to_polygon(self.Utah_Regional_Boundary)
+            GRIDMET_daily_temp = GenericCollection(collection=GRIDMET_daily_temp.collection.map(gridmet_mean_temp).select(['tmean'])).band_rename('tmean', 'temperature')
+            return GRIDMET_daily_temp
+        elif name == 'GRIDMET_monthly_temp':
+            # https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_GRIDMET
+            # 4.5 km pixel size
+            # Units of degrees Celsius
+            GRIDMET_daily_temp = self.get_temperature('GRIDMET_daily_temp')
+            GRIDMET_monthly_temp = GRIDMET_daily_temp.monthly_sum_collection
+            return GRIDMET_monthly_temp
+        else:
+            raise ValueError(f"Temperature collection '{name}' not found. Available options are: 'PRISM_daily_temp', 'PRISM_monthly_temp', 'DAYMET_daily_temp', 'DAYMET_monthly_temp', 'GRIDMET_daily_temp', 'GRIDMET_monthly_temp'.")
         
     def get_snowmelt(self, name):
         """
@@ -652,7 +888,7 @@ class InputCollections:
     def get_precip_and_snowmelt(self, name):
         """
         Retrieves combined snowmelt and precipitation collection by name, with a band named 'precip_and_snowmelt_input'.
-        Options: 'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly', 'GRIDMET_SNODAS_combined_inputs_monthly'
+        Options: 'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly', 'PRISM800m_SNODAS_combined_inputs_monthly', 'GRIDMET_SNODAS_combined_inputs_monthly'
 
         Args:
             name (str): Name of the combined collection to retrieve.
@@ -668,12 +904,16 @@ class InputCollections:
             PRISM_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'),
                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
             return PRISM_SNODAS_water_inputs
+        elif name == 'PRISM800m_SNODAS_combined_inputs_monthly':
+            PRISM_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_800M_UBM_INPUT'),
+                                                           start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
+            return PRISM_SNODAS_water_inputs
         elif name == 'GRIDMET_SNODAS_combined_inputs_monthly':
             GRIDMET_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_GRIDMET_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'),
                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
             return GRIDMET_SNODAS_water_inputs
         else:
-            raise ValueError(f"Combined Precipitation and Snowmelt collection '{name}' not found. Available options are: 'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly', 'GRIDMET_SNODAS_combined_inputs_monthly'.")
+            raise ValueError(f"Combined Precipitation and Snowmelt collection '{name}' not found. Available options are: 'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly', 'PRISM800m_SNODAS_combined_inputs_monthly', 'GRIDMET_SNODAS_combined_inputs_monthly'.")
         
     def get_irrigation(self, name):
         """
@@ -727,17 +967,32 @@ class InputCollections:
             native_proj = col.first().projection()
             UT_UDWR_irrigation_inputs = GenericCollection(col, start_date=self.start_date, end_date=self.end_date)
             if self.resampling_method == 'bilinear':
-                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj)).map(unmask_img)
                 UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
             elif self.resampling_method == 'focal_mean':
-                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj)).map(unmask_img)
                 UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
             elif self.resampling_method == 'reduceResolution':
-                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            return UT_UDWR_irrigation_inputs
+        
+        elif name == 'UT_UDWR_irrigation_inputs_monthly_scaled_30m_v2':
+            col = ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m_v2').select(['irrigation_depth_mm'])
+            native_proj = col.first().projection()
+            UT_UDWR_irrigation_inputs = GenericCollection(col, start_date=self.start_date, end_date=self.end_date)
+            if self.resampling_method == 'bilinear':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            elif self.resampling_method == 'focal_mean':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            elif self.resampling_method == 'reduceResolution':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj)).map(unmask_img)
                 UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
             return UT_UDWR_irrigation_inputs
         else:
-            raise ValueError(f"Irrigation input collection '{name}' not found. Available option is: 'UT_UDWR_irrigation_inputs_monthly_scaled_30m'.")
+            raise ValueError(f"Irrigation input collection '{name}' not found. Available option are: 'UT_UDWR_irrigation_inputs_monthly_scaled_30m' or 'UT_UDWR_irrigation_inputs_monthly_scaled_30m_v2'.")
 
     def get_PET(self, name):
         """
@@ -835,154 +1090,178 @@ class InputCollections:
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_DisALEXI_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/DISALEXI/CONUS/GRIDMET/MONTHLY/v2_0")
+            col_old = ee.ImageCollection("projects/openet/assets/disalexi/conus/gridmet/monthly/v2_0").filterBounds(self.Utah_Regional_Boundary).filterDate('2004-01-01', '2015-09-30')
+            col_new = ee.ImageCollection("projects/openet/assets/disalexi/conus/gridmet/monthly/v2_1").filterBounds(self.Utah_Regional_Boundary).filterDate('2015-10-01', str(datetime.datetime.today().strftime('%Y-%m-%d')))
+            # col = ee.ImageCollection("OpenET/DISALEXI/CONUS/GRIDMET/MONTHLY/v2_0") # decommissioned collection
+            col = ee.ImageCollection(col_old.toList(col_old.size()).cat(col_new.toList(col_new.size())))
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_DisALEXI = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate().band_rename('et', 'AET')
             OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             # OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             if self.resampling_method == 'bilinear':
-                OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
+                OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj))
                 OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'focal_mean':
-                OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj))
+                OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj))
                 OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
-                OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_DisALEXI
         elif name == 'OPEN_ET_ensemble':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_Ensemble_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/Ensemble/CONUS/GRIDMET/MONTHLY/v2_0")
+            # col = ee.ImageCollection("OpenET/Ensemble/CONUS/GRIDMET/MONTHLY/v2_0")
+            col_old = ee.ImageCollection("projects/openet/assets/ensemble/conus/gridmet/monthly/v2_0").filterBounds(self.Utah_Regional_Boundary).filterDate('2004-01-01', '2015-09-30')
+            col_new = ee.ImageCollection("projects/openet/assets/ensemble/conus/gridmet/monthly/v2_1").filterBounds(self.Utah_Regional_Boundary).filterDate('2015-10-01', str(datetime.datetime.today().strftime('%Y-%m-%d')))
+            col = ee.ImageCollection(col_old.toList(col_old.size()).cat(col_new.toList(col_new.size())))
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_ensemble = GenericCollection(col.select(['et_ensemble_mad']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et_ensemble_mad', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate().band_rename('et_ensemble_mad', 'AET')
             OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             # OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             if self.resampling_method == 'bilinear':
-                OPEN_ET_ensemble = OPEN_ET_ensemble.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
+                OPEN_ET_ensemble = OPEN_ET_ensemble.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj))
                 OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'focal_mean':
-                OPEN_ET_ensemble = OPEN_ET_ensemble.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj))
+                OPEN_ET_ensemble = OPEN_ET_ensemble.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj))
                 OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
-                OPEN_ET_ensemble =OPEN_ET_ensemble.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_ensemble =OPEN_ET_ensemble.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_ensemble
         elif name == 'OPEN_ET_PTJPL':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_PTJPL_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/PTJPL/CONUS/GRIDMET/MONTHLY/v2_0")
+            # col = ee.ImageCollection("OpenET/PTJPL/CONUS/GRIDMET/MONTHLY/v2_0")
+            col_old = ee.ImageCollection("projects/openet/assets/ptjpl/conus/gridmet/monthly/v2_0").filterBounds(self.Utah_Regional_Boundary).filterDate('2004-01-01', '2015-09-30')
+            col_new = ee.ImageCollection("projects/openet/assets/ptjpl/conus/gridmet/monthly/v2_1").filterBounds(self.Utah_Regional_Boundary).filterDate('2015-10-01', str(datetime.datetime.today().strftime('%Y-%m-%d')))
+            col = ee.ImageCollection(col_old.toList(col_old.size()).cat(col_new.toList(col_new.size())))
+
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_PTJPL = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate().band_rename('et', 'AET')
             # OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
-                OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
+                OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj))
                 OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'focal_mean':
-                OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj))
+                OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj))
                 OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
-                OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_PTJPL
         elif name == 'OPEN_ET_SIMS':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_SIMS_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/SIMS/CONUS/GRIDMET/MONTHLY/v2_0")
+            # col = ee.ImageCollection("OpenET/SIMS/CONUS/GRIDMET/MONTHLY/v2_0")
+            col_old = ee.ImageCollection("projects/openet/assets/sims/conus/gridmet/monthly/v2_0").filterBounds(self.Utah_Regional_Boundary).filterDate('2004-01-01', '2015-09-30')
+            col_new = ee.ImageCollection("projects/openet/assets/sims/conus/gridmet/monthly/v2_1").filterBounds(self.Utah_Regional_Boundary).filterDate('2015-10-01', str(datetime.datetime.today().strftime('%Y-%m-%d')))
+            col = ee.ImageCollection(col_old.toList(col_old.size()).cat(col_new.toList(col_new.size())))
+
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_SIMS = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate().band_rename('et', 'AET')
             # OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
-                OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
+                OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj))
                 OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'focal_mean':
-                OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj))
+                OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj))
                 OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
-                OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_SIMS
         elif name == 'OPEN_ET_SSEBOP':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_SSEBOP_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/SSEBOP/CONUS/GRIDMET/MONTHLY/v2_0")
+            # col = ee.ImageCollection("OpenET/SSEBOP/CONUS/GRIDMET/MONTHLY/v2_0")
+            col_old = ee.ImageCollection("projects/openet/assets/ssebop/conus/gridmet/monthly/v2_0").filterBounds(self.Utah_Regional_Boundary).filterDate('2004-01-01', '2015-09-30')
+            col_new = ee.ImageCollection("projects/openet/assets/ssebop/conus/gridmet/monthly/v2_1").filterBounds(self.Utah_Regional_Boundary).filterDate('2015-10-01', str(datetime.datetime.today().strftime('%Y-%m-%d')))
+            col = ee.ImageCollection(col_old.toList(col_old.size()).cat(col_new.toList(col_new.size())))
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_SSEBOP = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate().band_rename('et', 'AET')
             # OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
-                OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
+                OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj))
                 OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'focal_mean':
-                OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj))
+                OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj))
                 OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
-                OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_SSEBOP
         elif name == 'OPEN_ET_EEMETRIC':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_EEMETRIC_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/EEMETRIC/CONUS/GRIDMET/MONTHLY/v2_0")
+            # col = ee.ImageCollection("OpenET/EEMETRIC/CONUS/GRIDMET/MONTHLY/v2_0")
+            col_old = ee.ImageCollection("projects/openet/assets/eemetric/conus/gridmet/monthly/v2_0").filterBounds(self.Utah_Regional_Boundary).filterDate('2004-01-01', '2015-09-30')
+            col_new = ee.ImageCollection("projects/openet/assets/eemetric/conus/gridmet/monthly/v2_1").filterBounds(self.Utah_Regional_Boundary).filterDate('2015-10-01', str(datetime.datetime.today().strftime('%Y-%m-%d')))
+            col = ee.ImageCollection(col_old.toList(col_old.size()).cat(col_new.toList(col_new.size())))
+
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_EEMETRIC = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate().band_rename('et', 'AET')
             # OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
-                OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
+                OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj))
                 OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'focal_mean':
-                OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj))
+                OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj))
                 OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
-                OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_EEMETRIC
         elif name == 'OPEN_ET_GEESEBAL':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_GEESEBAL_CONUS_GRIDMET_MONTHLY_v2_0
             # 30 m pixel size
             # Units of mm/month
-            col = ee.ImageCollection("OpenET/GEESEBAL/CONUS/GRIDMET/MONTHLY/v2_0")
+            # col = ee.ImageCollection("OpenET/GEESEBAL/CONUS/GRIDMET/MONTHLY/v2_0")
+            col_old = ee.ImageCollection("projects/openet/assets/geesebal/conus/gridmet/monthly/v2_0").filterBounds(self.Utah_Regional_Boundary).filterDate('2004-01-01', '2015-09-30')
+            col_new = ee.ImageCollection("projects/openet/assets/geesebal/conus/gridmet/monthly/v2_1").filterBounds(self.Utah_Regional_Boundary).filterDate('2015-10-01', str(datetime.datetime.today().strftime('%Y-%m-%d')))
+            col = ee.ImageCollection(col_old.toList(col_old.size()).cat(col_new.toList(col_new.size())))
             native_proj = col.filterBounds(self.Utah_Regional_Boundary).first().projection()
             OPEN_ET_GEESEBAL = GenericCollection(col.select(['et']).filterBounds(self.Utah_Regional_Boundary), 
                                                                                 start_date=self.start_date, end_date=self.end_date)\
-                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate.band_rename('et', 'AET')
+                                                                                    .mask_to_polygon(self.Utah_Regional_Boundary).mosaicByDate().band_rename('et', 'AET')
             # OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL.collection.map(lambda img: img.setDefaultProjection(native_proj).resample('bilinear')\
             #                                 .reproject(crs=native_proj, scale=1000)), start_date=self.start_date, end_date=self.end_date)
             OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL.collection.map(lambda img: self._unmask(img))).mask_to_polygon(self.Utah_Regional_Boundary)
             if self.resampling_method == 'bilinear':
-                OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._to_1km_bilinear(img, work_proj=native_proj))
+                OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._resample_bilinear(img, work_proj=native_proj))
                 OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'focal_mean':
-                OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._to_1km_focal(img, work_proj=native_proj))
+                OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._resample_focal(img, work_proj=native_proj))
                 OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
-                OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._to_1km_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_GEESEBAL
         else:

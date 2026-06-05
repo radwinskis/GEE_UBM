@@ -28,9 +28,9 @@ field_capacity_options = ['UGS_fieldCap', 'HiHydroSoilFieldCap', 'OpenLandMapFie
 wilting_point_options = ['UGS_wiltingPoint', 'HiHydroSoilWiltPoint']
 
 Geo_K_options = [
-    'POLARIS_K_Sat_monthly', 'POLARIS_K_Sat_daily', 'HiHydroSoil_K_Sat_monthly', 
-    'HiHydroSoil_K_Sat_daily', 'UGS_Geo_K_monthly', 'UGS_Geo_K_daily', 
-    'USGS_Geo_K_monthly', 'USGS_Geo_K_daily'
+    'POLARIS_K_Sat_monthly', 'POLARIS_K_Sat_monthly_scaled', 'POLARIS_K_Sat_daily', 'POLARIS_K_Sat_daily_scaled', 'HiHydroSoil_K_Sat_monthly', 
+    'HiHydroSoil_K_Sat_monthly_scaled', 'HiHydroSoil_K_Sat_daily', 'HiHydroSoil_K_Sat_daily_scaled', 'UGS_Geo_K_monthly', 'UGS_Geo_K_daily', 
+    'USGS_Geo_K_monthly', 'USGS_Geo_K_daily', 'USGS_NGMD_GeoK_Scaled_Monthly'
 ]
 
 snowmelt_and_precip_options = [
@@ -57,7 +57,7 @@ soil_moisture_options = [
     'GLDAS_monthly_soil_moisture'
 ]
 
-UBM_model_options = ['Original_UBM', 'Modified_UBM_1', 'Modified_UBM_2']
+UBM_model_options = ['Original_UBM', 'Modified_UBM_1', 'Modified_UBM_2', 'Modified_UBM_1_Testing_Updates']
 resampling_options = ['bilinear', 'focal_mean', 'reduceResolution']
 
 #-----------------------------------------------------------#
@@ -69,26 +69,26 @@ start_year = 2004
 end_year = 2025 # Exclusive (runs through end_year - 1)
 
 # --- Model Selection ---
-UBM_model_to_use = UBM_model_options[1] # 'Modified_UBM_1'
+UBM_model_to_use = UBM_model_options[1] # 'Modified_UBM_1' ⚠️⚠️
 
 # --- Processing Options ---
 monthly_time_step = True  # True for monthly, False for daily
-convert_to_volume = True  # True to export volume (m^3), False for depth (mm)
+convert_to_volume = False  # True to export volume (m^3), False for depth (mm)
 resampling_method = resampling_options[1] # 'focal_mean'
 
 # --- Static Raster Selection ---
-soil_thickness_raster = soil_thickness_options[1]
-porosity_raster = porosity_options[1]
-field_capacity_raster = field_capacity_options[2]
-wilting_point_raster = wilting_point_options[1]
-Geo_K_raster = Geo_K_options[0]
+soil_thickness_raster = soil_thickness_options[1] #1 is calibrated
+porosity_raster = porosity_options[1] #1 is calibrated
+field_capacity_raster = field_capacity_options[2] #2 is calibrated
+wilting_point_raster = wilting_point_options[1] #1 is calibrated
+Geo_K_raster = Geo_K_options[-1] #-1 is calibrated
 
 # --- Dynamic Input Selection ---
 # Select inputs based on your chosen UBM_model_to_use
-snowmelt_and_precip = snowmelt_and_precip_options[2]
+snowmelt_and_precip = snowmelt_and_precip_options[0]
 irrigation = irrigation_options[0]  
 PET_input = PET_options[0]            # Used for Original_UBM
-AET_input = AET_options[8]            # Used for Modified_UBM_1 & 2 
+AET_input = AET_options[9]            # Used for Modified_UBM_1 & 2 
 soil_moisture_input = soil_moisture_options[0] # Used for Modified_UBM_2
 
 print(f'Using the following configuration: {UBM_model_to_use}, {resampling_method}, Monthly Time Step: {monthly_time_step}')
@@ -101,30 +101,61 @@ print(f'Dynamic Inputs: {{Snowmelt+Precip: {snowmelt_and_precip}, Irrigation: {i
 def convert_depth_to_volume(image):
     """Converts pixel values from depth (mm) to volume (m^3)."""
     pixel_area = ee.Image.pixelArea()
-    depth_in_meters = image.multiply(0.001)
+    outputs_for_conversion = image.select(['Runoff', 'Recharge', 'Soil_Water_End_Of_Previous_Timestep'])
+    outputs_not_for_conversion = image.select(['Soil_Saturation_Percent_End_Of_Timestep'])
+    # depth_in_meters = image.multiply(0.001)
+    depth_in_meters = outputs_for_conversion.multiply(0.001)
     volume_m3 = pixel_area.multiply(depth_in_meters)
-    return volume_m3.copyProperties(image, image.propertyNames())
+    return volume_m3.addBands(outputs_not_for_conversion).copyProperties(image, image.propertyNames())
 
+### Original version of join_collections using time-based join
+# def join_collections(inputs, outputs):
+#     """
+#     Joins the input collection (drivers) with the output collection (model results).
+#     Assumes both collections have matching 'system:time_start'.
+#     """
+#     # Use an inner join to match images by time
+#     filter_time = ee.Filter.equals(leftField='system:time_start', rightField='system:time_start')
+#     inner_join = ee.Join.inner()
+    
+#     # Apply the join
+#     joined = inner_join.apply(inputs, outputs, filter_time)
+    
+#     def merge_bands(feature):
+#         # 'primary' is the input image, 'secondary' is the model output
+#         input_img = ee.Image(feature.get('primary'))
+#         output_img = ee.Image(feature.get('secondary'))
+#         # Return merged image
+#         return input_img.addBands(output_img)
+    
+#     return ee.ImageCollection(joined.map(merge_bands))
+
+### zipping version of join_collections - MUCH faster
 def join_collections(inputs, outputs):
     """
-    Joins the input collection (drivers) with the output collection (model results).
-    Assumes both collections have matching 'system:time_start'.
+    Joins input and output collections by INDEX (Zipping) instead of TIME (Joining).
+    This avoids the massive overhead of scanning timestamps in a deep dependency chain.
     """
-    # Use an inner join to match images by time
-    filter_time = ee.Filter.equals(leftField='system:time_start', rightField='system:time_start')
-    inner_join = ee.Join.inner()
+    # 1. Convert both collections to Lists
+    # This locks them into their current order.
+    # Since 'outputs' came from iterating 'inputs', they are guaranteed aligned.
+    list_inputs = inputs.toList(inputs.size())
+    list_outputs = outputs.toList(outputs.size())
     
-    # Apply the join
-    joined = inner_join.apply(inputs, outputs, filter_time)
+    # 2. Zip them together
+    # Creates a list of pairs: [[In1, Out1], [In2, Out2], ...]
+    zipped = list_inputs.zip(list_outputs)
     
-    def merge_bands(feature):
-        # 'primary' is the input image, 'secondary' is the model output
-        input_img = ee.Image(feature.get('primary'))
-        output_img = ee.Image(feature.get('secondary'))
-        # Return merged image
-        return input_img.addBands(output_img)
+    # 3. Merge bands for each pair
+    def merge_pair(pair):
+        pair = ee.List(pair)
+        input_img = ee.Image(pair.get(0))
+        output_img = ee.Image(pair.get(1))
+        
+        # Merge and copy properties from the input (which has the safe/clean metadata)
+        return input_img.addBands(output_img).copyProperties(input_img, input_img.propertyNames())
     
-    return ee.ImageCollection(joined.map(merge_bands))
+    return ee.ImageCollection(zipped.map(merge_pair))
 
 def delete_collection_contents(asset_id):
     """Deletes all images inside an ImageCollection."""
@@ -193,6 +224,10 @@ elif UBM_model_to_use == 'Modified_UBM_2':
     ubm_run = ModifiedUBM2Run(input_collection_wrapper)
     asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM2Runs/'
     model_prefix = 'Mod_UBM_2_'
+elif UBM_model_to_use == 'Modified_UBM_1_Testing_Updates':
+    ubm_run = ModifiedUBM1Run(input_collection_wrapper)
+    asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1TestingRuns/'
+    model_prefix = 'Mod_UBM_1_Testing_'
 
 # Get output collection
 output_col = ubm_run.collection
@@ -232,6 +267,8 @@ if UBM_model_to_use == 'Original_UBM':
     dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, PET_input)}_{get_abbr(dyn_dict, irrigation)}"
 elif UBM_model_to_use == 'Modified_UBM_1':
     dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}"
+elif UBM_model_to_use == 'Modified_UBM_1_Testing_Updates':
+    dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}_T"
 elif UBM_model_to_use == 'Modified_UBM_2':
     dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, soil_moisture_input)}_{get_abbr(dyn_dict, irrigation)}"
 suffix = '_M' if monthly_time_step else '_D'
