@@ -2,7 +2,7 @@ import ee
 import os
 import google.auth
 from RadGEEToolbox import GenericCollection
-from GEE_UBM import OriginalUBMRun, ModifiedUBM1Run, ModifiedUBM2Run, check_merged_collection
+from GEE_UBM import OriginalUBMRun, ModifiedUBM1Run, ModifiedUBM2Run, check_merged_collection, InputCollections
 from generate_ubm_inputs_for_update import get_ubm_input_collection, get_abbreviation_dicts
 from datetime import datetime, date, timedelta, timezone
 import calendar
@@ -249,6 +249,48 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                 resume_state_image = None
 
             UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
+
+            # --------------------------------------------------------- #
+            # 2.5 PRE-CHECK INPUT AVAILABILITY
+            # --------------------------------------------------------- #
+            # Prevent empty-collection crashes by verifying the provider data exists
+            # for the target start date BEFORE running the heavy input generator.
+            try:
+                test_inputs = InputCollections(
+                    start_date=actual_start_date, 
+                    end_date=global_end_date, 
+                    soil_thickness_raster=soil_thickness_raster
+                )
+                
+                # Check Precipitation
+                if test_inputs.get_precip_and_snowmelt(snowmelt_and_precip).collection.size().getInfo() == 0:
+                    print(f" -> ⏭️ {snowmelt_and_precip} missing data for {actual_start_date}. Skipping UBM run.")
+                    continue 
+                
+                # Check Evapotranspiration (Model Dependent)
+                if UBM_model_to_use == 'Original_UBM':
+                    if test_inputs.get_PET(PET_input).collection.size().getInfo() == 0:
+                        print(f" -> ⏭️ {PET_input} missing data for {actual_start_date}. Skipping UBM run.")
+                        continue
+                else: # Modified_UBM_1 or Modified_UBM_2
+                    if test_inputs.get_AET(AET_input).collection.size().getInfo() == 0:
+                        print(f" -> ⏭️ {AET_input} missing data for {actual_start_date}. Skipping UBM run.")
+                        continue
+                        
+                # Check Soil Moisture (If using Mod 2)
+                if UBM_model_to_use == 'Modified_UBM_2':
+                    if test_inputs.get_soil_moisture(soil_moisture_input).collection.size().getInfo() == 0:
+                        print(f" -> ⏭️ {soil_moisture_input} missing data for {actual_start_date}. Skipping UBM run.")
+                        continue
+
+            except Exception as e:
+                # Catch specific GEE errors where an uninitialized collection throws an error
+                if "not found" in str(e).lower() or "null" in str(e).lower():
+                    print(f" -> ⏭️ Required provider dataset unavailable for {actual_start_date}. Skipping UBM run.")
+                    continue
+                else:
+                    raise e
+            # --------------------------------------------------------- #
 
             # --------------------------------------------------------- #
             # 3. GENERATE INPUTS & RUN MODEL
