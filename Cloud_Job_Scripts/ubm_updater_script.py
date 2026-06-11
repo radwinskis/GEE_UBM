@@ -52,7 +52,7 @@ AET_options = ['OPEN_ET_DisALEXI','OPEN_ET_PTJPL', 'OPEN_ET_SSEBOP', 'OPEN_ET_EE
 
 
 UBM_model_options = ['Original_UBM', 'Modified_UBM_1', 'Modified_UBM_2', 'Modified_UBM_1_Testing_Updates']
-resampling_options = ['bilinear', 'focal_mean', 'reduceResolution']
+resampling_options = ['bilinear', 'focal_mean', 'reduceResolution', 'nearest_neighbor']
 
 def add_one_month(current_date):
     """Safely increments a date object by exactly one calendar month."""
@@ -131,7 +131,11 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
     monthly_time_step = True  # True for monthly, False for daily
     convert_to_volume = False  # True to export volume (m^3), False for depth (mm)
     high_res_30m_implementation = high_res_implementation  # True to use 30m as global model resolution
-    resampling_method = resampling_options[1] # 'focal_mean'
+    # resampling_method = resampling_options[1] # 'focal_mean'
+    if high_res_30m_implementation:
+        resampling_method = resampling_options[-1] # 'nearest_neighbor'
+    else:
+        resampling_method = resampling_options[1] # 'focal_mean'
 
     # Filter loop options based on command line subset arguments
     precip_loop_list = [p.strip() for p in precip_subset.split(',')] if precip_subset else snowmelt_and_precip_options
@@ -191,8 +195,12 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                 dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, PET_input)}_{get_abbr(dyn_dict, irrigation)}"
                 model_prefix = 'Orig_UBM_'
             elif UBM_model_to_use == 'Modified_UBM_1':
-                asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs_v2/'
-                dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}"
+                if high_res_30m_implementation:
+                    asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs_30m_v2/'
+                    dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}_30m"
+                else:
+                    asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs_v2/'
+                    dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}"
                 model_prefix = 'Mod_UBM_1_'
             elif UBM_model_to_use == 'Modified_UBM_2':
                 asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM2Runs_v2/'

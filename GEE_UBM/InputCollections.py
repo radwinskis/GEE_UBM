@@ -174,6 +174,12 @@ class InputCollections:
         agg = img_fine.resample('bilinear')
         
         return agg.reproject(self.target_proj).set('system:time_start', img.get('system:time_start'))
+    
+    def _resample_near(self, img, work_proj=None):
+        wp = work_proj or img.projection()
+        img_fine = img.setDefaultProjection(wp)
+        # GEE natively defaults to nearest neighbor "chopping" when no resampler is specified!
+        return img_fine.reproject(self.target_proj).set('system:time_start', img.get('system:time_start'))
 
     # @classmethod
     def _get_soil_thickness_raster(self, name):
@@ -254,10 +260,10 @@ class InputCollections:
         
         
         if isinstance(resampling_method, str):
-            if resampling_method in ['focal_mean', 'bilinear', 'reduceResolution']:
+            if resampling_method in ['focal_mean', 'bilinear', 'reduceResolution', 'nearest_neighbor']:
                 self.resampling_method = resampling_method
             else:
-                raise ValueError(f"Resampling method '{resampling_method}' not recognized. Available options are: 'focal_mean', 'bilinear', 'reduceResolution'.")
+                raise ValueError(f"Resampling method '{resampling_method}' not recognized. Available options are: 'focal_mean', 'bilinear', 'reduceResolution', 'nearest_neighbor'.")
         else:
             raise ValueError(f"Resampling method must be a string. Received type {type(resampling_method)}.")
 
@@ -316,6 +322,8 @@ class InputCollections:
                 image = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 image = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                image = self._resample_near(image, work_proj=native_proj)
 
             UGS_porosity = image.clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return UGS_porosity
@@ -338,6 +346,8 @@ class InputCollections:
                 HiHydroSoilPorosity = self._resample_focal(HiHydroSoilPorosity, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 HiHydroSoilPorosity = self._resample_reduceResolution(HiHydroSoilPorosity, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                HiHydroSoilPorosity = self._resample_near(HiHydroSoilPorosity, work_proj=native_proj)
             HiHydroSoilPorosity = HiHydroSoilPorosity.unmask(0.5).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             # HiHydroSoilPorosity = col.mean().multiply(0.0001).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                         .reproject(crs=native_proj, scale=1000).unmask(0.5).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
@@ -362,6 +372,8 @@ class InputCollections:
                 POLARIS_porosity = self._resample_focal(col.mean(), work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 POLARIS_porosity = self._resample_reduceResolution(col.mean(), work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                POLARIS_porosity = self._resample_near(col.mean(), work_proj=native_proj)
             POLARIS_porosity = POLARIS_porosity.clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return POLARIS_porosity
         elif name == 'UGS_fieldCap':
@@ -377,6 +389,8 @@ class InputCollections:
                 UGS_fieldCap = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 UGS_fieldCap = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                UGS_fieldCap = self._resample_near(image, work_proj=native_proj)
             UGS_fieldCap = UGS_fieldCap.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return UGS_fieldCap
         elif name == 'HiHydroSoilFieldCap':
@@ -396,6 +410,8 @@ class InputCollections:
                 HiHydroSoilFieldCap = self._resample_focal(HiHydroSoilFieldCap, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 HiHydroSoilFieldCap = self._resample_reduceResolution(HiHydroSoilFieldCap, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                HiHydroSoilFieldCap = self._resample_near(HiHydroSoilFieldCap, work_proj=native_proj)
             HiHydroSoilFieldCap = HiHydroSoilFieldCap.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return HiHydroSoilFieldCap
         elif name == 'OpenLandMapFieldCap':
@@ -416,6 +432,8 @@ class InputCollections:
                 OpenLandMapFieldCap = self._resample_focal(OpenLandMapFieldCap, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 OpenLandMapFieldCap = self._resample_reduceResolution(OpenLandMapFieldCap, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                OpenLandMapFieldCap = self._resample_near(OpenLandMapFieldCap, work_proj=native_proj)
             OpenLandMapFieldCap = OpenLandMapFieldCap.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             return OpenLandMapFieldCap
         elif name == 'UGS_BMC_K':
@@ -430,6 +448,8 @@ class InputCollections:
                 UGS_BMC_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 UGS_BMC_K = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                UGS_BMC_K = self._resample_near(image, work_proj=native_proj)
             UGS_BMC_K = UGS_BMC_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('BMC_K')
             return UGS_BMC_K
         elif name == 'USGS_NGMD_GeoK_Scaled_Monthly':
@@ -451,6 +471,8 @@ class InputCollections:
                 NGMD_Geo_K = self._resample_focal(geok_raster, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 NGMD_Geo_K = self._resample_reduceResolution(geok_raster, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                NGMD_Geo_K = self._resample_near(geok_raster, work_proj=native_proj)
             NGMD_Geo_K = NGMD_Geo_K.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return NGMD_Geo_K
         elif name == 'UGS_Geo_K':
@@ -465,6 +487,8 @@ class InputCollections:
                 UGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 UGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                UGS_Geo_K = self._resample_near(image, work_proj=native_proj)
             UGS_Geo_K = UGS_Geo_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
         elif name == 'UGS_Geo_K_daily':
@@ -479,6 +503,8 @@ class InputCollections:
                 UGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 UGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                UGS_Geo_K = self._resample_near(image, work_proj=native_proj)
             UGS_Geo_K = UGS_Geo_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
         elif name == 'UGS_Geo_K_monthly':
@@ -493,6 +519,8 @@ class InputCollections:
                 UGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 UGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                UGS_Geo_K = self._resample_near(image, work_proj=native_proj)
             UGS_Geo_K = UGS_Geo_K.clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).multiply(ee.Image(30.4375)).max(ee.Image(0)).rename('Geo_K')
             return UGS_Geo_K
         elif name == 'USGS_Geo_K_monthly':
@@ -508,6 +536,8 @@ class InputCollections:
                 USGS_Geo_K = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 USGS_Geo_K = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                USGS_Geo_K = self._resample_near(image, work_proj=native_proj)
             USGS_Geo_K = USGS_Geo_K.clip(self.Utah_Regional_Boundary).max(ee.Image(0)).rename('Geo_K')
             return USGS_Geo_K
         elif name == 'POLARIS_K_Sat_daily':
@@ -530,6 +560,8 @@ class InputCollections:
                 POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                POLARIS_ksat = self._resample_near(POLARIS_ksat, work_proj=native_proj)
             POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return POLARIS_ksat
         elif name == 'POLARIS_K_Sat_daily_scaled':
@@ -553,6 +585,8 @@ class InputCollections:
                 POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                POLARIS_ksat = self._resample_near(POLARIS_ksat, work_proj=native_proj)
             POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return POLARIS_ksat
         elif name == 'POLARIS_K_Sat_monthly':
@@ -575,6 +609,8 @@ class InputCollections:
                 POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                POLARIS_ksat = self._resample_near(POLARIS_ksat, work_proj=native_proj)
             POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return POLARIS_ksat
         elif name == 'POLARIS_K_Sat_monthly_scaled':
@@ -598,6 +634,8 @@ class InputCollections:
                 POLARIS_ksat = self._resample_focal(POLARIS_ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 POLARIS_ksat = self._resample_reduceResolution(POLARIS_ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                POLARIS_ksat = self._resample_near(POLARIS_ksat, work_proj=native_proj)
             POLARIS_ksat = POLARIS_ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return POLARIS_ksat
         elif name == 'HiHydroSoil_K_Sat_daily':
@@ -610,6 +648,8 @@ class InputCollections:
                 ksat = self._resample_focal(ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                ksat = self._resample_near(ksat, work_proj=native_proj)
             ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return ksat
         elif name == 'HiHydroSoil_K_Sat_daily_scaled':
@@ -623,6 +663,8 @@ class InputCollections:
                 ksat = self._resample_focal(ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                ksat = self._resample_near(ksat, work_proj=native_proj)
             ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return ksat
         elif name == 'HiHydroSoil_K_Sat_monthly':
@@ -635,6 +677,8 @@ class InputCollections:
                 ksat = self._resample_focal(ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                ksat = self._resample_near(ksat, work_proj=native_proj)
             ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return ksat
         elif name == 'HiHydroSoil_K_Sat_monthly_scaled':
@@ -648,6 +692,8 @@ class InputCollections:
                 ksat = self._resample_focal(ksat, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 ksat = self._resample_reduceResolution(ksat, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                ksat = self._resample_near(ksat, work_proj=native_proj)
             ksat = ksat.clip(self.Utah_Regional_Boundary).rename('Geo_K')
             return ksat
         elif name == 'UGS_wiltingPoint':
@@ -662,6 +708,8 @@ class InputCollections:
                 UGS_wiltingPoint = self._resample_focal(image, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 UGS_wiltingPoint = self._resample_reduceResolution(image, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                UGS_wiltingPoint = self._resample_near(image, work_proj=native_proj)
             UGS_wiltingPoint = UGS_wiltingPoint.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             return UGS_wiltingPoint
         elif name == 'HiHydroSoilWiltPoint':
@@ -681,6 +729,8 @@ class InputCollections:
                 HiHydroSoilWiltPoint = self._resample_focal(HiHydroSoilWiltPoint, work_proj=native_proj)
             elif self.resampling_method == 'reduceResolution':
                 HiHydroSoilWiltPoint = self._resample_reduceResolution(HiHydroSoilWiltPoint, work_proj=native_proj)
+            elif self.resampling_method == 'nearest_neighbor':
+                HiHydroSoilWiltPoint = self._resample_near(HiHydroSoilWiltPoint, work_proj=native_proj)
             HiHydroSoilWiltPoint = HiHydroSoilWiltPoint.clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
             return HiHydroSoilWiltPoint
         else:
@@ -975,6 +1025,9 @@ class InputCollections:
             elif self.resampling_method == 'reduceResolution':
                 UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj)).map(unmask_img)
                 UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            elif self.resampling_method == 'nearest_neighbor':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_near(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
             return UT_UDWR_irrigation_inputs
         
         elif name == 'UT_UDWR_irrigation_inputs_monthly_scaled_30m_v2':
@@ -989,6 +1042,9 @@ class InputCollections:
                 UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
             elif self.resampling_method == 'reduceResolution':
                 UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj)).map(unmask_img)
+                UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
+            elif self.resampling_method == 'nearest_neighbor':
+                UT_UDWR_irrigation_inputs = UT_UDWR_irrigation_inputs.collection.map(lambda img: self._resample_near(img, work_proj=native_proj)).map(unmask_img)
                 UT_UDWR_irrigation_inputs = GenericCollection(UT_UDWR_irrigation_inputs, start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary).band_rename('irrigation_depth_mm', 'irrigation')
             return UT_UDWR_irrigation_inputs
         else:
@@ -1110,6 +1166,9 @@ class InputCollections:
             elif self.resampling_method == 'reduceResolution':
                 OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI, start_date=self.start_date, end_date=self.end_date)
+            elif self.resampling_method == 'nearest_neighbor':
+                OPEN_ET_DisALEXI = OPEN_ET_DisALEXI.collection.map(lambda img: self._resample_near(img, work_proj=native_proj))
+                OPEN_ET_DisALEXI = GenericCollection(collection=OPEN_ET_DisALEXI, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_DisALEXI
         elif name == 'OPEN_ET_ensemble':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_Ensemble_CONUS_GRIDMET_MONTHLY_v2_0
@@ -1134,6 +1193,9 @@ class InputCollections:
                 OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
                 OPEN_ET_ensemble =OPEN_ET_ensemble.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble, start_date=self.start_date, end_date=self.end_date)
+            elif self.resampling_method == 'nearest_neighbor':
+                OPEN_ET_ensemble = OPEN_ET_ensemble.collection.map(lambda img: self._resample_near(img, work_proj=native_proj))
                 OPEN_ET_ensemble = GenericCollection(collection=OPEN_ET_ensemble, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_ensemble
         elif name == 'OPEN_ET_PTJPL':
@@ -1161,6 +1223,9 @@ class InputCollections:
             elif self.resampling_method == 'reduceResolution':
                 OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL, start_date=self.start_date, end_date=self.end_date)
+            elif self.resampling_method == 'nearest_neighbor':
+                OPEN_ET_PTJPL = OPEN_ET_PTJPL.collection.map(lambda img: self._resample_near(img, work_proj=native_proj))
+                OPEN_ET_PTJPL = GenericCollection(collection=OPEN_ET_PTJPL, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_PTJPL
         elif name == 'OPEN_ET_SIMS':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_SIMS_CONUS_GRIDMET_MONTHLY_v2_0
@@ -1187,6 +1252,9 @@ class InputCollections:
             elif self.resampling_method == 'reduceResolution':
                 OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS, start_date=self.start_date, end_date=self.end_date)
+            elif self.resampling_method == 'nearest_neighbor':
+                OPEN_ET_SIMS = OPEN_ET_SIMS.collection.map(lambda img: self._resample_near(img, work_proj=native_proj))
+                OPEN_ET_SIMS = GenericCollection(collection=OPEN_ET_SIMS, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_SIMS
         elif name == 'OPEN_ET_SSEBOP':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_SSEBOP_CONUS_GRIDMET_MONTHLY_v2_0
@@ -1211,6 +1279,9 @@ class InputCollections:
                 OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
                 OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP, start_date=self.start_date, end_date=self.end_date)
+            elif self.resampling_method == 'nearest_neighbor':
+                OPEN_ET_SSEBOP = OPEN_ET_SSEBOP.collection.map(lambda img: self._resample_near(img, work_proj=native_proj))
                 OPEN_ET_SSEBOP = GenericCollection(collection=OPEN_ET_SSEBOP, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_SSEBOP
         elif name == 'OPEN_ET_EEMETRIC':
@@ -1238,6 +1309,9 @@ class InputCollections:
             elif self.resampling_method == 'reduceResolution':
                 OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
                 OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC, start_date=self.start_date, end_date=self.end_date)
+            elif self.resampling_method == 'nearest_neighbor':
+                OPEN_ET_EEMETRIC = OPEN_ET_EEMETRIC.collection.map(lambda img: self._resample_near(img, work_proj=native_proj))
+                OPEN_ET_EEMETRIC = GenericCollection(collection=OPEN_ET_EEMETRIC, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_EEMETRIC
         elif name == 'OPEN_ET_GEESEBAL':
             # https://developers.google.com/earth-engine/datasets/catalog/OpenET_GEESEBAL_CONUS_GRIDMET_MONTHLY_v2_0
@@ -1262,6 +1336,9 @@ class InputCollections:
                 OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL, start_date=self.start_date, end_date=self.end_date)
             elif self.resampling_method == 'reduceResolution':
                 OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._resample_reduceResolution(img, work_proj=native_proj))
+                OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL, start_date=self.start_date, end_date=self.end_date)
+            elif self.resampling_method == 'nearest_neighbor':
+                OPEN_ET_GEESEBAL = OPEN_ET_GEESEBAL.collection.map(lambda img: self._resample_near(img, work_proj=native_proj))
                 OPEN_ET_GEESEBAL = GenericCollection(collection=OPEN_ET_GEESEBAL, start_date=self.start_date, end_date=self.end_date)
             return OPEN_ET_GEESEBAL
         else:

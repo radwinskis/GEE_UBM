@@ -53,6 +53,10 @@ def get_ubm_input_collection(
 
     UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
 
+    UT_agricultural_boundaries = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/UT_Merged_Agricultural_Polygons")
+    agricultural_polygons_mask = ee.Image(0).paint(UT_agricultural_boundaries, 1).clip(UT_boundary) #.reproject('EPSG:4326', None, 30)
+    # agricultural_polygons_mask = agricultural_polygons_mask.updateMask(agricultural_polygons_mask.gt(0))
+
     print(f"Processing dates: {start_date} through {end_date}")
     print(f"Organizing input collection for UBM model: {UBM_model_to_use}")
     print(f"Target Scale: {target_scale}m")
@@ -117,9 +121,15 @@ def get_ubm_input_collection(
         )
         
         if hasattr(model_ready_wrapper, 'collection'):
-            yearly_collections.append(model_ready_wrapper.collection)
+            if target_scale == 30:
+                yearly_collections.append(model_ready_wrapper.collection.map(lambda img: img.updateMask(agricultural_polygons_mask.gt(0))))
+            else:
+                yearly_collections.append(model_ready_wrapper.collection)
         else:
-            yearly_collections.append(model_ready_wrapper)
+            if target_scale == 30:
+                yearly_collections.append(model_ready_wrapper.map(lambda img: img.updateMask(agricultural_polygons_mask.gt(0))))
+            else:
+                yearly_collections.append(model_ready_wrapper)
 
     if not yearly_collections:
         raise ValueError("No collections generated.")

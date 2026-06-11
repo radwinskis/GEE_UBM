@@ -34,3 +34,5 @@ run_ubm_complete_workflow.py
 update_snowmelt_and_precip_asset.py
 dist/
 agricultural_area_delineation.ipynb
+asset_transfering.ipynb
+swb_gcp_assets.ipynb

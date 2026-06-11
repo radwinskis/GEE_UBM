@@ -23,12 +23,19 @@ def harmonize_to_target(source_image, target_proj, downsample_method='focal_mean
         downsampled = source_image.reduceResolution(
             reducer=ee.Reducer.mean(), maxPixels=65536
         ).reproject(crs=target_proj)
+    elif downsample_method == 'nearest_neighbor':
+        downsampled = source_image.reproject(crs=target_proj)
     else:
-        raise ValueError("Invalid downsample_method. Choose 'focal_mean' or 'reduceResolution'.")
+        raise ValueError("Invalid downsample_method. Choose 'focal_mean', 'reduceResolution', or 'nearest_neighbor'.")
     
-    interpolated = source_image.resample('bilinear').reproject(
-        crs=target_proj
-    )
+    # interpolated = source_image.resample('bilinear').reproject(
+    #     crs=target_proj
+    # )
+    interpolated = ee.Image(ee.Algorithms.If(
+        ee.Number(target_scale).eq(30),
+        source_image.reproject(crs=target_proj),
+        source_image.resample('bilinear').reproject(crs=target_proj)
+    ))
 
     resampled_image = ee.Image(ee.Algorithms.If(
         is_finer, downsampled, interpolated
