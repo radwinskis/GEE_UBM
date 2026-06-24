@@ -142,11 +142,11 @@ class InputCollections:
         """Lazy load shapefiles only when needed."""
         if cls._shapefiles is None:
             cls._shapefiles = {
-                'GSL_basin': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Merged_GSL_Basin_Watershed"),
-                'Castle_valley': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Castle_Valley_Watershed"),
-                'Milford': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Milford_Watershed"),
-                'Sanpete': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Watersheds/Sanpete_Watershed"),
-                'Utah_Regional_Boundary': ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary"),
+                'GSL_basin': ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Watersheds/Merged_GSL_Basin_Watershed"),
+                'Castle_valley': ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Watersheds/Castle_Valley_Watershed"),
+                'Milford': ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Watersheds/Milford_Watershed"),
+                'Sanpete': ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Watersheds/Sanpete_Watershed"),
+                'Utah_Regional_Boundary': ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary"),
             }
         return cls._shapefiles
     
@@ -187,7 +187,7 @@ class InputCollections:
         Utah_Regional_Boundary = self._get_shapefiles()['Utah_Regional_Boundary']
         target_proj = ee.Projection('EPSG:32612').atScale(1000)
         if name == 'ISRIC':
-            image = ee.Image("projects/ut-gee-ugs-bsf-dev/assets/UT_regional_soil_depth_to_bedrock_cm_ISRIC")
+            image = ee.Image("projects/ut-gee-ugs-uswb-dev/assets/UT_regional_soil_depth_to_bedrock_cm_ISRIC")
             native_proj = image.projection()
             # image = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000)
@@ -218,17 +218,17 @@ class InputCollections:
             filled_image = gNATSGO_image.unmask(isric_image)
             return filled_image.rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_30m':
-            st_scalar_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_30m')
+            st_scalar_asset = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_30m')
             # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
-            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
+            return ee.Image('projects/ut-gee-ugs-uswb-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_800m':
-            st_scalar_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_800m')
+            st_scalar_asset = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_800m')
             # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_800m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
-            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_800m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
+            return ee.Image('projects/ut-gee-ugs-uswb-dev/assets/UT_RandomForest_800m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_1km':
-            st_scalar_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_1000m')
+            st_scalar_asset = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_1000m')
             # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
-            return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
+            return ee.Image('projects/ut-gee-ugs-uswb-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
             
         else:
             raise ValueError(f"Soil thickness raster '{name}' not found. Available options are: 'Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_800m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 'gNATSGO_filled', 'gNATSGO_filled_2_meter_cap'.")
@@ -454,13 +454,13 @@ class InputCollections:
             return UGS_BMC_K
         elif name == 'USGS_NGMD_GeoK_Scaled_Monthly':
             #units of m/month
-            valley_intensity = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_Valley_Intensity_100m')
+            valley_intensity = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_Valley_Intensity_100m')
             k_mountain = 1 #0.005 #0.001 #0.1
             k_valley = 0.00001 #0.000005 #0.00001 #0.001
             geok_scalar = valley_intensity.multiply(k_valley - k_mountain).add(k_mountain).rename('GeoK_Scalar')
-            geok_raster_100m = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_GeoK_m_per_month_100m')
+            geok_raster_100m = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_GeoK_m_per_month_100m')
             native_proj = geok_raster_100m.projection()
-            variable_mask_asset = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_GeoK_Geomaterials_Variable_Mask_100m')
+            variable_mask_asset = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_GeoK_Geomaterials_Variable_Mask_100m')
             variable_mask = variable_mask_asset.gt(0)
             global_k_scalar = 1.0
             m_per_month_to_mm_per_month = 1000
@@ -526,7 +526,7 @@ class InputCollections:
         elif name == 'USGS_Geo_K_monthly':
             # converted to mm/day ahead of time
             # from https://www.sciencebase.gov/catalog/item/552c4877e4b0b22a157f5061
-            image = ee.Image("projects/ut-gee-ugs-bsf-dev/assets/USGS_GeoK_Utah_Clipped_mm_month")
+            image = ee.Image("projects/ut-gee-ugs-uswb-dev/assets/USGS_GeoK_Utah_Clipped_mm_month")
             native_proj = image.projection()
             # USGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).max(ee.Image(0)).rename('Geo_K')
@@ -577,7 +577,7 @@ class InputCollections:
             # 2. Reduce the collection to find the minimum pixel value across all depths
             # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
-            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            scalar_image = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_KSat_Scalar_1000m')
             POLARIS_ksat = converted_col.min().multiply(scalar_image)
             if self.resampling_method == 'bilinear':
                 POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
@@ -626,7 +626,7 @@ class InputCollections:
             # 2. Reduce the collection to find the minimum pixel value across all depths
             # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
             #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
-            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            scalar_image = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_KSat_Scalar_1000m')
             POLARIS_ksat = converted_col.min().multiply(scalar_image)
             if self.resampling_method == 'bilinear':
                 POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
@@ -655,7 +655,7 @@ class InputCollections:
         elif name == 'HiHydroSoil_K_Sat_daily_scaled':
             col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/ksat")
             native_proj = col.first().projection()
-            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            scalar_image = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_KSat_Scalar_1000m')
             ksat = col.min().multiply(10).multiply(scalar_image) # convert from cm/day to mm/day
             if self.resampling_method == 'bilinear':
                 ksat = self._resample_bilinear(ksat, work_proj=native_proj)
@@ -684,7 +684,7 @@ class InputCollections:
         elif name == 'HiHydroSoil_K_Sat_monthly_scaled':
             col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/ksat")
             native_proj = col.first().projection()
-            scalar_image = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/Utah_KSat_Scalar_1000m')
+            scalar_image = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_KSat_Scalar_1000m')
             ksat = col.min().multiply(10).multiply(30.4375).multiply(scalar_image) # convert from cm/day to mm/month
             if self.resampling_method == 'bilinear':
                 ksat = self._resample_bilinear(ksat, work_proj=native_proj)
@@ -947,19 +947,19 @@ class InputCollections:
         """
         if name == 'DAYMET_SNODAS_combined_inputs_monthly':
             # Combining DAYMET monthly precipitation with SNODAS monthly snowmelt
-            DAYMET_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_DAYMET_PRECIP_PLUS_SNOWMELT_1KM_UBM_INPUT'),
+            DAYMET_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_DAYMET_PRECIP_PLUS_SNOWMELT_1KM_UBM_INPUT'),
                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
             return DAYMET_SNODAS_water_inputs
         elif name == 'PRISM_SNODAS_combined_inputs_monthly':
-            PRISM_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'),
+            PRISM_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'),
                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
             return PRISM_SNODAS_water_inputs
         elif name == 'PRISM800m_SNODAS_combined_inputs_monthly':
-            PRISM_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_800M_UBM_INPUT'),
+            PRISM_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_800M_UBM_INPUT'),
                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
             return PRISM_SNODAS_water_inputs
         elif name == 'GRIDMET_SNODAS_combined_inputs_monthly':
-            GRIDMET_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_GRIDMET_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'),
+            GRIDMET_SNODAS_water_inputs = GenericCollection(collection=ee.ImageCollection('projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_GRIDMET_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'),
                                                            start_date=self.start_date, end_date=self.end_date).mask_to_polygon(self.Utah_Regional_Boundary)
             return GRIDMET_SNODAS_water_inputs
         else:
@@ -1012,7 +1012,7 @@ class InputCollections:
         def unmask_img(img):
             return img.unmask(0)
         if name == 'UT_UDWR_irrigation_inputs_monthly_scaled_30m':
-            img = ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m') #.select(['irrigation_depth_mm'])
+            img = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m') #.select(['irrigation_depth_mm'])
             col = unpack_multiband_to_collection(img).select(['irrigation_depth_mm'])
             native_proj = col.first().projection()
             UT_UDWR_irrigation_inputs = GenericCollection(col, start_date=self.start_date, end_date=self.end_date)
@@ -1031,7 +1031,7 @@ class InputCollections:
             return UT_UDWR_irrigation_inputs
         
         elif name == 'UT_UDWR_irrigation_inputs_monthly_scaled_30m_v2':
-            col = ee.ImageCollection('projects/ut-gee-ugs-bsf-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m_v2').select(['irrigation_depth_mm'])
+            col = ee.ImageCollection('projects/ut-gee-ugs-uswb-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m_v2').select(['irrigation_depth_mm'])
             native_proj = col.first().projection()
             UT_UDWR_irrigation_inputs = GenericCollection(col, start_date=self.start_date, end_date=self.end_date)
             if self.resampling_method == 'bilinear':

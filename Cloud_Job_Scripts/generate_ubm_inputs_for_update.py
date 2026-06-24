@@ -51,9 +51,9 @@ def get_ubm_input_collection(
     start_date = str(start_date)
     end_date = str(end_date)
 
-    UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
+    UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary").geometry()
 
-    UT_agricultural_boundaries = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/UT_Merged_Agricultural_Polygons")
+    UT_agricultural_boundaries = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/UT_Merged_Agricultural_Polygons_Filtered_Final")
     agricultural_polygons_mask = ee.Image(0).paint(UT_agricultural_boundaries, 1).clip(UT_boundary) #.reproject('EPSG:4326', None, 30)
     # agricultural_polygons_mask = agricultural_polygons_mask.updateMask(agricultural_polygons_mask.gt(0))
 

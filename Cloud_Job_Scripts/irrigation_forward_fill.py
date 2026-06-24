@@ -26,17 +26,17 @@ def main():
             scopes=['https://www.googleapis.com/auth/earthengine', 
                     'https://www.googleapis.com/auth/cloud-platform']
         )
-        ee.Initialize(credentials, project='ut-gee-ugs-bsf-dev')
+        ee.Initialize(credentials, project='ut-gee-ugs-uswb-dev')
     else:
         print("Detected local environment. Using JSON service account key.")
-        service_account = 'localpythonscripts@ut-gee-ugs-bsf-dev.iam.gserviceaccount.com'
-        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-bsf-dev-53dcc5d729e0.json')
+        service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
+        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json')
         ee.Initialize(credentials=credentials)
     
     
-    collection_path = "projects/ut-gee-ugs-bsf-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m_v2"
+    collection_path = "projects/ut-gee-ugs-uswb-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m_v2"
     irrigation_col = ee.ImageCollection(collection_path)
-    boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
+    boundary = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary").geometry()
     
     target_date = get_target_date()
     

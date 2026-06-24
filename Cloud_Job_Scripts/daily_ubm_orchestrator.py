@@ -16,11 +16,11 @@ def initialize_gee():
             scopes=['https://www.googleapis.com/auth/earthengine', 
                     'https://www.googleapis.com/auth/cloud-platform']
         )
-        ee.Initialize(credentials, project='ut-gee-ugs-bsf-dev')
+        ee.Initialize(credentials, project='ut-gee-ugs-uswb-dev')
     else:
         print("Orchestrator: Local environment detected.")
-        service_account = 'localpythonscripts@ut-gee-ugs-bsf-dev.iam.gserviceaccount.com'
-        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-bsf-dev-53dcc5d729e0.json')
+        service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
+        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json')
         ee.Initialize(credentials=credentials)
 
 def check_provider_ready(collection_id, check_date_str, next_day_str):

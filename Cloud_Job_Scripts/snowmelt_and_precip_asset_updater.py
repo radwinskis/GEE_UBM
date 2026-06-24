@@ -46,19 +46,19 @@ def get_dataset_config(precip_data_type):
     """
     target_scale = None  # Default to native scale
     if precip_data_type == 'PRISM_daily_precip':
-        asset_name = 'projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'
+        asset_name = 'projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'
         temp_band = 'PRISM_daily_temp'
         target_scale = 4000
     elif precip_data_type == 'DAYMET_daily_precip':
-        asset_name = 'projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_DAYMET_PRECIP_PLUS_SNOWMELT_1KM_UBM_INPUT'
+        asset_name = 'projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_DAYMET_PRECIP_PLUS_SNOWMELT_1KM_UBM_INPUT'
         temp_band = 'DAYMET_daily_temp'
         target_scale = 1000
     elif precip_data_type == 'GRIDMET_daily_precip':
-        asset_name = 'projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_GRIDMET_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'
+        asset_name = 'projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_GRIDMET_PRECIP_PLUS_SNOWMELT_5KM_UBM_INPUT'
         temp_band = 'GRIDMET_daily_temp'
         target_scale = 4000
     elif precip_data_type == 'PRISM800m_daily_precip':
-        asset_name = 'projects/ut-gee-ugs-bsf-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_800M_UBM_INPUT'
+        asset_name = 'projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_800M_UBM_INPUT'
         temp_band = 'PRISM800m_daily_temp'
         target_scale = 800  
     else:
@@ -82,14 +82,14 @@ def main(override_start_date=None, override_end_date=None):
             scopes=['https://www.googleapis.com/auth/earthengine', 
                     'https://www.googleapis.com/auth/cloud-platform']
         )
-        ee.Initialize(credentials, project='ut-gee-ugs-bsf-dev')
+        ee.Initialize(credentials, project='ut-gee-ugs-uswb-dev')
     else:
         print("Detected local environment. Using JSON service account key.")
-        service_account = 'localpythonscripts@ut-gee-ugs-bsf-dev.iam.gserviceaccount.com'
-        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-bsf-dev-53dcc5d729e0.json')
+        service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
+        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json')
         ee.Initialize(credentials=credentials)
 
-    boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
+    boundary = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary").geometry()
     
     # Datasets to process (now includes PRISM 800m)
     datasets_to_process = [

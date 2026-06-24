@@ -113,11 +113,11 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
             scopes=['https://www.googleapis.com/auth/earthengine', 
                     'https://www.googleapis.com/auth/cloud-platform']
         )
-        ee.Initialize(credentials, project='ut-gee-ugs-bsf-dev')
+        ee.Initialize(credentials, project='ut-gee-ugs-uswb-dev')
     else:
         print("Detected local environment. Using JSON service account key.")
-        service_account = 'localpythonscripts@ut-gee-ugs-bsf-dev.iam.gserviceaccount.com'
-        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-bsf-dev-53dcc5d729e0.json')
+        service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
+        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json')
         ee.Initialize(credentials=credentials)
 
     global_start_date, global_end_date = get_processing_dates(start_date, end_date)
@@ -191,19 +191,19 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
             static_part = f"{get_abbr(st_dict, soil_thickness_raster)}_{get_abbr(st_dict, porosity_raster)}_{get_abbr(st_dict, field_capacity_raster)}_{get_abbr(st_dict, wilting_point_raster)}_{get_abbr(st_dict, Geo_K_raster)}"
 
             if UBM_model_to_use == 'Original_UBM':
-                asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/Original_UBM_Runs_v2/'
+                asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/Original_UBM_Runs_v2/'
                 dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, PET_input)}_{get_abbr(dyn_dict, irrigation)}"
                 model_prefix = 'Orig_UBM_'
             elif UBM_model_to_use == 'Modified_UBM_1':
                 if high_res_30m_implementation:
-                    asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs_30m_v2/'
+                    asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_30m_v2/'
                     dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}_30m"
                 else:
-                    asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs_v2/'
+                    asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_v2/'
                     dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}"
                 model_prefix = 'Mod_UBM_1_'
             elif UBM_model_to_use == 'Modified_UBM_2':
-                asset_folder = 'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM2Runs_v2/'
+                asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM2Runs_v2/'
                 dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, soil_moisture_input)}_{get_abbr(dyn_dict, irrigation)}"
                 model_prefix = 'Mod_UBM_2_'
                 
@@ -256,7 +256,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                 actual_start_date = '2004-01-01'
                 resume_state_image = None
 
-            UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
+            UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary").geometry()
 
             # --------------------------------------------------------- #
             # 2.5 PRE-CHECK INPUT AVAILABILITY

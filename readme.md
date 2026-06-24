@@ -427,7 +427,7 @@ However, to run this model in a different region, you will need to update severa
 #### 1. Earth Engine Initialization & Credentials
 The orchestration scripts currently authenticate using a specific Google Cloud Project and service account.
 * **Files to modify:** `daily_ubm_orchestrator.py` and `ubm_updater_script.py`.
-* **Action:** In the `initialize_gee()` function (or at the top of the updater script), change the `project='ut-gee-ugs-bsf-dev'` string to your own Google Cloud Project ID. If running locally, you must also update the path to your `.json` service account key file.
+* **Action:** In the `initialize_gee()` function (or at the top of the updater script), change the `project='ut-gee-ugs-uswb-dev'` string to your own Google Cloud Project ID. If running locally, you must also update the path to your `.json` service account key file.
 
 #### 2. Redefining the Region of Interest (ROI)
 The pipeline heavily utilizes a master polygon to mask imagery and reduce computational overhead.
@@ -441,7 +441,7 @@ While precipitation and ET data are drawn from national catalogs, the static map
 * **Files to modify:** `InputCollections.py`.
 * **Action:** You must supply your own regional rasters for Soil Thickness, Porosity, Field Capacity, Wilting Point, and Geo_K.
   * Look inside `_get_soil_thickness_raster()` and `get_static_raster()`.
-  * Replace the GEE asset paths (e.g., `"projects/ut-gee-ugs-bsf-dev/assets/Utah_USGS_NGMD_Geomaterials_GeoK_m_per_month_100m"`) with your own regional data. 
+  * Replace the GEE asset paths (e.g., `"projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_GeoK_m_per_month_100m"`) with your own regional data. 
   * Ensure your custom assets are ingested into Earth Engine and scaled appropriately. If your data is in different units, you will need to adjust the mathematical conversions in these functions (e.g., converting porosity to volumetric percentage, or hydraulic conductivity to mm/day).
 
 #### 4. Customizing Irrigation Inputs
@@ -457,4 +457,4 @@ Because calculating Snow Water Equivalent (SWE) deltas is computationally expens
 #### 6. Updating the UBM Export Paths
 Finally, the model needs to know where to save the completed hydrological arrays.
 * **Files to modify:** `ubm_updater_script.py`.
-* **Action:** In the `main()` function, locate the `asset_folder` string assignments (e.g., `'projects/ut-gee-ugs-bsf-dev/assets/ModifiedUBM1Runs_v2/'`). Update these paths to point to an ImageCollection folder you own in Earth Engine.
+* **Action:** In the `main()` function, locate the `asset_folder` string assignments (e.g., `'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_v2/'`). Update these paths to point to an ImageCollection folder you own in Earth Engine.
