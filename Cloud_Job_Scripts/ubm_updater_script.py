@@ -237,17 +237,38 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                     
                     # Convert global_start_date to a date object for comparison
                     target_start_obj = datetime.strptime(global_start_date, '%Y-%m-%d').date()
-                    
-                    # Compare dates to determine the action
+                    target_end_obj = datetime.strptime(global_end_date, '%Y-%m-%d').date()
+
                     if next_needed_month < target_start_obj:
                         print(f" -> MASSIVE GAP DETECTED: Asset is stuck at {latest_date.strftime('%Y-%m')}.")
                         print(f"    Overriding scheduled start date to catch up from {next_needed_month.strftime('%Y-%m')}.")
                         actual_start_date = next_needed_month.strftime('%Y-%m-%d')
                         resume_state_image = latest_image
+                        
+                    # --- NEW BRANCH 2 DEFENSE ---
+                    # If asset has the target end month AND this is a standard 1-month update window... SKIP
+                    elif next_needed_month > target_end_obj and target_start_obj == target_end_obj.replace(day=1):
+                        print(f" -> ⏭️ Collection is already up to date (Latest: {latest_date.strftime('%Y-%m')}). Skipping redundant daily run.")
+                        continue # Safely escapes the loop and moves to the next model!
+                    # ----------------------------
+                        
                     else:
-                        print(" -> Asset is up-to-date. Executing scheduled rewind logic.")
+                        print(" -> Executing scheduled update/rewind logic.")
                         # Fetch the image strictly BEFORE the scheduled rewind date
+                        actual_start_date = global_start_date
                         resume_state_image = existing_col.filterDate('1900-01-01', actual_start_date).sort('system:time_start', False).first()
+
+                        
+                    # # Compare dates to determine the action
+                    # if next_needed_month < target_start_obj:
+                    #     print(f" -> MASSIVE GAP DETECTED: Asset is stuck at {latest_date.strftime('%Y-%m')}.")
+                    #     print(f"    Overriding scheduled start date to catch up from {next_needed_month.strftime('%Y-%m')}.")
+                    #     actual_start_date = next_needed_month.strftime('%Y-%m-%d')
+                    #     resume_state_image = latest_image
+                    # else:
+                    #     print(" -> Asset is up-to-date. Executing scheduled rewind logic.")
+                    #     # Fetch the image strictly BEFORE the scheduled rewind date
+                    #     resume_state_image = existing_col.filterDate('1900-01-01', actual_start_date).sort('system:time_start', False).first()
                 else:
                     raise ValueError("Empty Collection")
                     

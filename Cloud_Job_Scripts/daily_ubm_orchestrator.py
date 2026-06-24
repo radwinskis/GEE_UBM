@@ -67,7 +67,7 @@ def main(high_res=False):
     # --------------------------------------------------------- #
     # BRANCH 1: THE 6-MONTH ROLLING REWIND (Runs only on the 28th)
     # --------------------------------------------------------- #
-    if today.day >= 28:
+    if today.day == 28:
         print(f"\n{'='*60}")
         print("ORCHESTRATOR BRANCH 1: 6-MONTH ROLLING REWIND INITIATED")
         print(f"{'='*60}")
