@@ -3,7 +3,7 @@ import os
 import google.auth
 from datetime import date, timedelta
 import calendar
-
+import argparse
 import ubm_updater_script
 import snowmelt_and_precip_asset_updater
 import irrigation_forward_fill 
@@ -42,7 +42,7 @@ def print_summary(summary_log):
         print(line)
     print("="*60 + "\n")
 
-def main():
+def main(high_res=False):
     """
     Orchestrator for daily UBM updates. On the 28th of each month, it triggers a 6-month backfill. On all other days, it checks for new data from key providers and triggers updates accordingly.
     This schedule accounts for typical data release and update patterns, where a 6-month rolling rewind updates model results to use updated/improved input data, and the daily sensor mode ensures the model stays current with the latest available data.
@@ -85,7 +85,7 @@ def main():
         # Bypass sensors and forcefully trigger the child scripts with override dates
         irrigation_forward_fill.main()
         snowmelt_and_precip_asset_updater.main(override_start_date=rewind_start_str, override_end_date=target_end_str)
-        ubm_updater_script.main(start_date=rewind_start_str, end_date=target_end_str)
+        ubm_updater_script.main(start_date=rewind_start_str, end_date=target_end_str, high_res_implementation=high_res)
 
         print("✅ 6-Month Rewind Tasks Queued Successfully.")
         summary_log.append("🔹 ACTION: Successfully queued historical backfill for Precip, Irrigation, and UBM.")
@@ -152,10 +152,14 @@ def main():
         print(" -> ✅ OpenET data published. Running UBM Updater.")
         summary_log.append("🔹 ACTION: Triggered Main UBM updater.")
         
-        ubm_updater_script.main()
+        ubm_updater_script.main(high_res_implementation=high_res)
 
     # Final summary print if the script ran to full completion
     print_summary(summary_log)
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run the Daily UBM Orchestrator.")
+    parser.add_argument('--high-res', action='store_true', help="Flag to run the 30m high-resolution model.")
+    args = parser.parse_args()
+    
+    main(high_res=args.high_res)
