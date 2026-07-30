@@ -65,11 +65,34 @@ def main(high_res=False):
     target_start_next_day_str = target_start_next_day_obj.strftime('%Y-%m-%d')
 
     # --------------------------------------------------------- #
-    # BRANCH 1: THE 6-MONTH ROLLING REWIND (Runs only on the 28th)
+    # BRANCH 1: THE 6-MONTH ROLLING REWIND FOR INPUT DATASETS (Runs only on the 27th)
     # --------------------------------------------------------- #
-    if today.day == 28:
+    if today.day == 27:
+            print(f"\n{'='*60}")
+            print("ORCHESTRATOR BRANCH 1: 6-MONTH INPUT DATASET ROLLING REWIND INITIATED")
+            print(f"{'='*60}")
+            
+            new_month = today.month - 6
+            new_year = today.year
+            if new_month <= 0:
+                new_month += 12
+                new_year -= 1
+            rewind_start_str = date(new_year, new_month, 1).strftime('%Y-%m-%d')
+    
+            print(f"Rewind Window: {rewind_start_str} to {target_end_str}")
+            summary_log.append(f"🔹 MODE: 6-Month Rolling Rewind ({rewind_start_str} to {target_end_str})")
+    
+            irrigation_forward_fill.main()
+            snowmelt_and_precip_asset_updater.main(override_start_date=rewind_start_str, override_end_date=target_end_str)
+    
+            print("✅ 6-Month Rewind Tasks Queued Successfully.")
+            summary_log.append("🔹 ACTION: Successfully queued historical backfill for Precip and Irrigation.")
+    # --------------------------------------------------------- #
+    # BRANCH 2: THE 6-MONTH ROLLING REWIND FOR THE ACTUAL UBM MODEL (Runs only on the 28th)
+    # --------------------------------------------------------- #
+    elif today.day == 28:
         print(f"\n{'='*60}")
-        print("ORCHESTRATOR BRANCH 1: 6-MONTH ROLLING REWIND INITIATED")
+        print("ORCHESTRATOR BRANCH 2: 6-MONTH UBM ROLLING REWIND INITIATED")
         print(f"{'='*60}")
         
         new_month = today.month - 6
@@ -82,20 +105,17 @@ def main(high_res=False):
         print(f"Rewind Window: {rewind_start_str} to {target_end_str}")
         summary_log.append(f"🔹 MODE: 6-Month Rolling Rewind ({rewind_start_str} to {target_end_str})")
 
-        # Bypass sensors and forcefully trigger the child scripts with override dates
-        irrigation_forward_fill.main()
-        snowmelt_and_precip_asset_updater.main(override_start_date=rewind_start_str, override_end_date=target_end_str)
         ubm_updater_script.main(start_date=rewind_start_str, end_date=target_end_str, high_res_implementation=high_res)
 
         print("✅ 6-Month Rewind Tasks Queued Successfully.")
-        summary_log.append("🔹 ACTION: Successfully queued historical backfill for Precip, Irrigation, and UBM.")
+        summary_log.append("🔹 ACTION: Successfully queued historical backfill for the UBM.")
 
     # --------------------------------------------------------- #
-    # BRANCH 2: THE DAILY SENSOR MODE (Runs all other days)
+    # BRANCH 3: THE DAILY SENSOR MODE (Runs all other days)
     # --------------------------------------------------------- #
     else:
         print(f"\n{'='*60}")
-        print("ORCHESTRATOR BRANCH 2: DAILY SENSOR MODE INITIATED")
+        print("ORCHESTRATOR BRANCH 3: DAILY SENSOR MODE INITIATED")
         print(f"{'='*60}")
         print(f"Targeting: {target_start_str} to {target_end_str}")
         summary_log.append(f"🔹 MODE: Daily Sensor (Targeting {target_start_str} to {target_end_str})")

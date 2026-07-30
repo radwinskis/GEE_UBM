@@ -12,7 +12,6 @@ import argparse
 #-----------------------------------------------------------#
 ################### AVAILABLE OPTIONS #######################
 #-----------------------------------------------------------#
-# Copy these strings into the configuration section below or use list indexing
 
 soil_thickness_options = [
     'Random_Forest_Utah_Model_30m', 'Random_Forest_Utah_Model_800m', 'Random_Forest_Utah_Model_1km', 'ISRIC', 'gNATSGO', 
@@ -67,20 +66,20 @@ def get_processing_dates(override_start=None, override_end=None):
     - On the 28th: 4-month rolling rewind.
     - Any other day (e.g., the 8th): 1-month update.
     """
-    # 1. Local Testing Override
+    # Local Testing Override
     if override_start and override_end:
         print("🟡 USING MANUAL DATE OVERRIDE")
-        end_obj = datetime.strptime(override_end, '%Y-%m-%d').date() + timedelta(days=1)
+        end_obj = datetime.strptime(override_end, '%Y-%m-%d').date() # + timedelta(days=1)
         end_date = end_obj.strftime('%Y-%m-%d')
         return override_start, end_date
         
     today = date.today()
     
-    # 2. End date is ALWAYS the last day of the previous calendar month
+    # End date is ALWAYS the last day of the previous calendar month
     last_day_prev_month = today.replace(day=1) - timedelta(days=1)
     end_date_str = last_day_prev_month.strftime('%Y-%m-%d')
     
-    # 3. Start date changes depending on the execution day
+    # Start date changes depending on the execution day
     if today.day == 28:
         print("🔄 28TH DETECTED: Executing 4-Month Rolling Rewind")
         # Subtract 4 months from current month to get the starting month
@@ -131,7 +130,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
     monthly_time_step = True  # True for monthly, False for daily
     convert_to_volume = False  # True to export volume (m^3), False for depth (mm)
     high_res_30m_implementation = high_res_implementation  # True to use 30m as global model resolution
-    # resampling_method = resampling_options[1] # 'focal_mean'
+   
     if high_res_30m_implementation:
         resampling_method = resampling_options[-1] # 'nearest_neighbor'
     else:
@@ -172,12 +171,8 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
         PET_input = PET_options[0]            # Used for Original_UBM
         for aet_dataset in aet_loop_list:
             AET_input = aet_dataset
-            # AET_input = AET_options[9]            # Used for Modified_UBM_1 & 2 
             soil_moisture_input = soil_moisture_options[0] # Used for Modified_UBM_2
 
-            # print(f'Using the following configuration: {UBM_model_to_use}, {resampling_method}, Monthly Time Step: {monthly_time_step}')
-            # print(f'Static Rasters: {{Soil Thickness: {soil_thickness_raster}, Porosity: {porosity_raster}, Field Capacity: {field_capacity_raster}, Wilting Point: {wilting_point_raster}, Geo K: {Geo_K_raster}}}')
-            # print(f'Dynamic Inputs: {{Snowmelt+Precip: {snowmelt_and_precip}, Irrigation: {irrigation}, PET: {PET_input}, AET: {AET_input}, Soil Moisture: {soil_moisture_input}}}')
 
             print(f"\n{'='*60}")
             print(f"EVALUATING MODEL: {snowmelt_and_precip} | {AET_input}")
@@ -258,17 +253,6 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                         actual_start_date = global_start_date
                         resume_state_image = existing_col.filterDate('1900-01-01', actual_start_date).sort('system:time_start', False).first()
 
-                        
-                    # # Compare dates to determine the action
-                    # if next_needed_month < target_start_obj:
-                    #     print(f" -> MASSIVE GAP DETECTED: Asset is stuck at {latest_date.strftime('%Y-%m')}.")
-                    #     print(f"    Overriding scheduled start date to catch up from {next_needed_month.strftime('%Y-%m')}.")
-                    #     actual_start_date = next_needed_month.strftime('%Y-%m-%d')
-                    #     resume_state_image = latest_image
-                    # else:
-                    #     print(" -> Asset is up-to-date. Executing scheduled rewind logic.")
-                    #     # Fetch the image strictly BEFORE the scheduled rewind date
-                    #     resume_state_image = existing_col.filterDate('1900-01-01', actual_start_date).sort('system:time_start', False).first()
                 else:
                     raise ValueError("Empty Collection")
                     
@@ -280,7 +264,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
             UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary").geometry()
 
             # --------------------------------------------------------- #
-            # 2.5 PRE-CHECK INPUT AVAILABILITY
+            # PRE-CHECK INPUT AVAILABILITY
             # --------------------------------------------------------- #
             # Prevent empty-collection crashes by verifying the provider data exists
             # for the target start date BEFORE running the heavy input generator.
@@ -322,7 +306,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
             # --------------------------------------------------------- #
 
             # --------------------------------------------------------- #
-            # 3. GENERATE INPUTS & RUN MODEL
+            # GENERATE INPUTS & RUN MODEL
             # --------------------------------------------------------- #
             print(f" -> Generating inputs from {actual_start_date} to {global_end_date}...")
 
@@ -353,7 +337,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                 latest_input_millis = latest_input_image.get('system:time_start').getInfo()
                 latest_input_date = datetime.fromtimestamp(latest_input_millis / 1000.0, tz=timezone.utc).date()
                 
-                # We add one month (and then set day=1) to create an exclusive end date boundary for the filters
+                # Add one month (and then set day=1) to create an exclusive end date boundary for the filters
                 max_available_end_date_obj = add_one_month(latest_input_date)
                 max_available_end_str = max_available_end_date_obj.strftime('%Y-%m-%d')
                 
@@ -408,40 +392,38 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                     return volume_m3.addBands(outputs_not_for_conversion).copyProperties(image, image.propertyNames())
                 output_col = output_col.map(convert_depth_to_volume)
 
-            ### zipping version of join_collections - MUCH faster
             def join_collections(inputs, outputs):
                 """
                 Joins input and output collections by INDEX (Zipping) instead of TIME (Joining).
                 This avoids the massive overhead of scanning timestamps in a deep dependency chain.
                 """
-                # 1. Convert both collections to Lists
-                # This locks them into their current order.
-                # Since 'outputs' came from iterating 'inputs', they are guaranteed aligned.
-                list_inputs = inputs.toList(inputs.size())
-                list_outputs = outputs.toList(outputs.size())
+                sorted_inputs = inputs.sort('system:time_start')
+                sorted_outputs = outputs.sort('system:time_start')
+
+                list_inputs = sorted_inputs.toList(sorted_inputs.size())
+                list_outputs = sorted_outputs.toList(sorted_outputs.size())
                 
-                # 2. Zip them together
-                # Creates a list of pairs: [[In1, Out1], [In2, Out2], ...]
+                # Zip pairs them together to create a list of pairs: [[In1, Out1], [In2, Out2], ...]
                 zipped = list_inputs.zip(list_outputs)
                 
-                # 3. Merge bands for each pair
+                # Merge bands for each pair
                 def merge_pair(pair):
                     pair = ee.List(pair)
                     input_img = ee.Image(pair.get(0))
                     output_img = ee.Image(pair.get(1))
                     
-                    # Merge and copy properties from the input (which has the safe/clean metadata)
+                    # Merge and copy properties from the input 
                     return input_img.addBands(output_img).copyProperties(input_img, input_img.propertyNames())
                 
                 return ee.ImageCollection(zipped.map(merge_pair))
             
-            final_collection = join_collections(input_col, output_col).filterDate(actual_start_date, global_end_date)
+            final_collection = join_collections(input_col, output_col).filterDate(actual_start_date, global_end_date).sort('system:time_start')
             image_list = final_collection.toList(final_collection.size())
             num_images = image_list.size().getInfo()
             
             print(f" -> Queueing {num_images} targeted Upsert export tasks...")
 
-            filtered_input_col = input_col.filterDate(actual_start_date, global_end_date)
+            filtered_input_col = input_col.filterDate(actual_start_date, global_end_date).sort('system:time_start')
             filtered_dates_list = filtered_input_col.aggregate_array('Date_Filter').getInfo()
 
             for i in range(num_images):

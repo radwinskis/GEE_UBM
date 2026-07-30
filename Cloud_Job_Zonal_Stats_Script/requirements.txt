@@ -4,5 +4,5 @@ numpy
 RadGEEToolbox
 GEE-UBM
 gcsfs
-pandas
+pandas == 2.3.3
 pyarrow

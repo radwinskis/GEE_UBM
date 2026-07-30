@@ -12,7 +12,7 @@ import argparse
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # ---------------------------------------------------------
-# 1. AUTHENTICATION & ENVIRONMENT SETUP
+# AUTHENTICATION & ENVIRONMENT SETUP
 # ---------------------------------------------------------
 def initialize_gee():
     """Initializes Earth Engine & GCS for either Cloud Run or Local environments."""
@@ -26,7 +26,7 @@ def initialize_gee():
     else:
         print("Orchestrator: Local environment detected.")
         service_account_path = 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json'
-        # Crucial for local gcsfs/pandas authentication
+        # For local gcsfs/pandas authentication
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = service_account_path
         
         service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
@@ -36,7 +36,7 @@ def initialize_gee():
 initialize_gee()
 
 # ---------------------------------------------------------
-# 2. DEFINITIONS & DICTIONARIES
+#  DEFINITIONS & DICTIONARIES
 # ---------------------------------------------------------
 GCS_BASE_URI = "gs://ugs-uswb-dev-serving/ubm_zonal_stats"
 ASSET_FOLDER = "projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_v2/"
@@ -66,29 +66,6 @@ custom_regions_dict = {
     'GSL_Basin': GSL_basin,
     'UT_Statewide': UT_boundary
 }
-
-# ensemble_assets = [
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_DAYMETSNOM_ETDALEXI_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_DAYMETSNOM_ETEMTRIC_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_DAYMETSNOM_ETGSEBAL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_DAYMETSNOM_ETPTJPL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_DAYMETSNOM_ETSBOP_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_GRIDMETSNOM_ETDALEXI_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_GRIDMETSNOM_ETEMTRIC_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_GRIDMETSNOM_ETGSEBAL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_GRIDMETSNOM_ETPTJPL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_GRIDMETSNOM_ETSBOP_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISMSNOM_ETDALEXI_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISMSNOM_ETEMTRIC_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISMSNOM_ETGSEBAL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISMSNOM_ETPTJPL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISMSNOM_ETSBOP_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF800mST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISM800mSNOM_ETDALEXI_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF800mST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISM800mSNOM_ETEMTRIC_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF800mST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISM800mSNOM_ETGSEBAL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF800mST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISM800mSNOM_ETPTJPL_IRRIm_M_mm', 
-#     'Mod_UBM_1_RF800mST_POLPor_OLMFC_HHSWP_NGMDGKSdM_PRISM800mSNOM_ETSBOP_IRRIm_M_mm'
-# ]
 
 ensemble_assets = [
     'Mod_UBM_1_RF1kmST_POLPor_OLMFC_HHSWP_NGMDGKSdM_DAYMETSNOM_ETDALEXI_IRRIm_M_mm', 
@@ -126,7 +103,7 @@ for asset in ensemble_assets:
 ensemble_asset_dict = dict(zip(ensemble_asset_names, [ASSET_FOLDER + a for a in ensemble_assets]))
 
 # ---------------------------------------------------------
-# 3. HELPER FUNCTIONS
+# HELPER FUNCTIONS
 # ---------------------------------------------------------
 def add_one_month(current_date):
     """Safely increments a date object by exactly one calendar month."""
@@ -175,7 +152,7 @@ def get_ee_bounds(asset_id):
     return first_date, latest_date
 
 # ---------------------------------------------------------
-# 4. CORE PROCESSING LOGIC
+# CORE PROCESSING LOGIC
 # ---------------------------------------------------------
 def process_region_dictionary(region_dict, dictionary_name, override_start=None, override_end=None, force_overwrite=False):
     """
@@ -225,14 +202,8 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
         safe_boundary_name = dictionary_name.replace(" ", "_")
         parquet_path = f"{GCS_BASE_URI}/boundary_type={safe_boundary_name}/region_name={region_name}/data.parquet"
         
-        # 1. Fetch existing dates
-        # existing_pq_dates = {}
-        # if fs.exists(parquet_path):
-        #     df_existing = pd.read_parquet(parquet_path, engine='pyarrow', columns=['Date', 'Ensemble_Member'])
-        #     for ens in df_existing['Ensemble_Member'].unique():
-        #         existing_pq_dates[ens] = df_existing[df_existing['Ensemble_Member'] == ens]['Date'].max().date()
         existing_pq_dates = {}
-        existing_pq_ym = {} # NEW: Stores Year-Month strings for fast override checking
+        existing_pq_ym = {}
         
         if fs.exists(parquet_path):
             with fs.open(parquet_path, 'rb') as f:
@@ -246,7 +217,7 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
         
         new_data_frames = []
         
-        # 2. Iterate through each model ensemble
+        # Iterate through each model ensemble
         for ens_name, asset_id in ensemble_asset_dict.items():
             
             ee_first, ee_latest = get_ee_bounds(asset_id)
@@ -268,7 +239,6 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
                 if start_ym in ens_existing_ym and end_ym in ens_existing_ym and not force_overwrite:
                     print(f"[{ens_name}] 🟢 Override window ({start_ym} to {end_ym}) already in cache. Skipping to save resources.")
                     continue
-                # ---------------------------------
 
                 process_start_str = override_start
                 # Earth Engine filters are exclusive on end_date, so we add 1 day
@@ -298,16 +268,15 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
                 end_date=process_end_str
             )
 
-            # SAFETY CATCH: Prevent bug if collection is empty after date filtering
+            # Prevent bug if collection is empty after date filtering
             if ubm_col.collection.size().getInfo() == 0:
                 print(f"      -> 🛑 No images found in this date window. Skipping.")
                 continue
             
-            # ubm_col.collection = ubm_col.collection.map(convert_depth_to_volume)
             ubm_col = GenericCollection(collection=ubm_col.collection.map(convert_depth_to_volume))
             scale = ubm_col.image_grab(0).projection().nominalScale().getInfo()
 
-            # --- FIX 1: DYNAMICALLY FILTER MISSING BANDS TO PREVENT EE CRASH ---
+            # DYNAMICALLY FILTER MISSING BANDS TO PREVENT EE CRASH
             actual_ee_bands = ee.Image(ubm_col.collection.first()).bandNames().getInfo()
             
             safe_band_names = []
@@ -319,8 +288,6 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
             
             print(f"      - Processing {len(safe_band_names)} valid bands simultaneously...")
             
-            # Execute ultra-fast multiband reduction
-            # Make sure you use your new v2 function here if you renamed it in the package!
             ens_df = ubm_col.batch_zonal_stats(
                 geometries=geometry, 
                 band=safe_band_names, 
@@ -351,11 +318,11 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
             
             new_data_frames.append(ens_df)
 
-        # 3. Synchronize new updates with GCS Cache
+        # Synchronize new updates with GCS Cache
         if new_data_frames:
             combined_new_df = pd.concat(new_data_frames, ignore_index=True)
 
-            # 1. Fetch existing cache and unify
+            # Fetch existing cache and unify
             if fs.exists(parquet_path):
                 print(f"[{region_name}] 📝 Found existing cache. Fetching to unify datasets...")
                 with fs.open(parquet_path, 'rb') as f:
@@ -366,10 +333,10 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
                 print(f"[{region_name}] 🚀 Initializing entirely new Parquet database...")
                 unified_df = combined_new_df
 
-            # 2. Idempotency check: Overwrite overlapping dates with the newest calculations
+            # Idempotency check: Overwrite overlapping dates with the newest calculations
             unified_df = unified_df.drop_duplicates(subset=['Date', 'Ensemble_Member'], keep='last')
 
-            # 3. RECALCULATE ENSEMBLE MEAN (CRITICAL FIX)
+            # RECALCULATE ENSEMBLE MEAN (CRITICAL FIX)
             print(f"[{region_name}] 📊 Recalculating Master Ensemble Mean...")
             
             # Drop the historical 'Ensemble_Mean' rows so they don't skew the new average
@@ -387,7 +354,7 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
 
             unified_df['Date_Filter'] = unified_df['Date'].dt.strftime('%Y-%m-%d')
 
-            # 4. Sort and Push to GCS
+            # Sort and Push to GCS
             unified_df = unified_df.sort_values(by=['Ensemble_Member', 'Date']).reset_index(drop=True)
             
             with fs.open(parquet_path, 'wb') as f:
@@ -396,13 +363,12 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
             print(f"[{region_name}] ✅ GCS Sync Complete.")
 
 # ---------------------------------------------------------
-# 5. EXECUTE PIPELINE
+# EXECUTE PIPELINE
 # ---------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the Zonal Stats Parquet Exporter.")
     parser.add_argument('--start-date', type=str, help="Manual override for start date (YYYY-MM-DD).")
     parser.add_argument('--end-date', type=str, help="Manual override for end date (YYYY-MM-DD).")
-    # NEW: Add the force-overwrite boolean flag
     parser.add_argument('--force-overwrite', action='store_true', help="Force recalculation even if data exists in cache.")
     args = parser.parse_args()
 
