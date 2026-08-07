@@ -40,8 +40,12 @@ wilting_point_raster = wilting_point_options[1] #1 (HiHydroSoil) is calibrated
 Geo_K_raster = Geo_K_options[-1] #-1 (USGS_NGMD_GeoK_Scaled_Monthly) is calibrated
 
 
+# snowmelt_and_precip_options = [
+#     'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly', 'PRISM800m_SNODAS_combined_inputs_monthly',
+#     'GRIDMET_SNODAS_combined_inputs_monthly'
+# ]
 snowmelt_and_precip_options = [
-    'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM_SNODAS_combined_inputs_monthly', 'PRISM800m_SNODAS_combined_inputs_monthly',
+    'DAYMET_SNODAS_combined_inputs_monthly', 'PRISM800m_SNODAS_combined_inputs_monthly',
     'GRIDMET_SNODAS_combined_inputs_monthly'
 ]
 irrigation_options = [

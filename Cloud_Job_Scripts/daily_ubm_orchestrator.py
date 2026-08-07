@@ -68,25 +68,25 @@ def main(high_res=False):
     # BRANCH 1: THE 6-MONTH ROLLING REWIND FOR INPUT DATASETS (Runs only on the 27th)
     # --------------------------------------------------------- #
     if today.day == 27:
-            print(f"\n{'='*60}")
-            print("ORCHESTRATOR BRANCH 1: 6-MONTH INPUT DATASET ROLLING REWIND INITIATED")
-            print(f"{'='*60}")
-            
-            new_month = today.month - 6
-            new_year = today.year
-            if new_month <= 0:
-                new_month += 12
-                new_year -= 1
-            rewind_start_str = date(new_year, new_month, 1).strftime('%Y-%m-%d')
-    
-            print(f"Rewind Window: {rewind_start_str} to {target_end_str}")
-            summary_log.append(f"🔹 MODE: 6-Month Rolling Rewind ({rewind_start_str} to {target_end_str})")
-    
-            irrigation_forward_fill.main()
-            snowmelt_and_precip_asset_updater.main(override_start_date=rewind_start_str, override_end_date=target_end_str)
-    
-            print("✅ 6-Month Rewind Tasks Queued Successfully.")
-            summary_log.append("🔹 ACTION: Successfully queued historical backfill for Precip and Irrigation.")
+        print(f"\n{'='*60}")
+        print("ORCHESTRATOR BRANCH 1: 6-MONTH INPUT DATASET ROLLING REWIND INITIATED")
+        print(f"{'='*60}")
+        
+        new_month = today.month - 6
+        new_year = today.year
+        if new_month <= 0:
+            new_month += 12
+            new_year -= 1
+        rewind_start_str = date(new_year, new_month, 1).strftime('%Y-%m-%d')
+
+        print(f"Rewind Window: {rewind_start_str} to {target_end_str}")
+        summary_log.append(f"🔹 MODE: 6-Month Rolling Rewind ({rewind_start_str} to {target_end_str})")
+
+        irrigation_forward_fill.main()
+        snowmelt_and_precip_asset_updater.main(override_start_date=rewind_start_str, override_end_date=target_end_str)
+
+        print("✅ 6-Month Rewind Tasks Queued Successfully.")
+        summary_log.append("🔹 ACTION: Successfully queued historical backfill for Precip and Irrigation.")
     # --------------------------------------------------------- #
     # BRANCH 2: THE 6-MONTH ROLLING REWIND FOR THE ACTUAL UBM MODEL (Runs only on the 28th)
     # --------------------------------------------------------- #
@@ -169,7 +169,30 @@ def main(high_res=False):
             print_summary(summary_log)
             return
 
-        print(" -> ✅ OpenET data published. Running UBM Updater.")
+        # print(" -> ✅ OpenET data published. Running UBM Updater.")
+        # summary_log.append("🔹 ACTION: Triggered Main UBM updater.")
+        
+        # ubm_updater_script.main(high_res_implementation=high_res)
+        internal_precip_id = "projects/ut-gee-ugs-uswb-dev/assets/UT_Precip_and_Snowmelt_Image_Collections/UT_SNODAS_PRISM_PRECIP_PLUS_SNOWMELT_800M_UBM_INPUT"
+        internal_irri_id = "projects/ut-gee-ugs-uswb-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m_v2"
+
+        # Check if the updaters have finished exporting the target month
+        precip_internal_ready = check_provider_ready(internal_precip_id, target_start_str, target_start_next_day_str)
+        irri_internal_ready = check_provider_ready(internal_irri_id, target_start_str, target_start_next_day_str)
+        
+        print(f" -> Internal Precip/Snowmelt: {'🟢 READY' if precip_internal_ready else '🟡 PROCESSING'}")
+        print(f" -> Internal Irrigation:      {'🟢 READY' if irri_internal_ready else '🟡 PROCESSING'}")
+        print("-"*40)
+        
+        summary_log.append(f"🔹 INTERNAL: Precip={'READY' if precip_internal_ready else 'PROCESSING'}, Irrigation={'READY' if irri_internal_ready else 'PROCESSING'}")
+
+        if not (precip_internal_ready and irri_internal_ready):
+            print(f" -> 🛑 Internal assets for {target_start_str} are still processing in GEE. Halting UBM pipeline until tasks finish.")
+            summary_log.append("🔹 ACTION: Halted UBM pipeline. Waiting for internal GEE export tasks to complete.")
+            print_summary(summary_log)
+            return
+
+        print(" -> ✅ Internal dependencies met. Running UBM Updater.")
         summary_log.append("🔹 ACTION: Triggered Main UBM updater.")
         
         ubm_updater_script.main(high_res_implementation=high_res)
