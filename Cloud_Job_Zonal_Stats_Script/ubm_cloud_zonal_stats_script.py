@@ -1,5 +1,7 @@
 import ee
 import os
+import sys
+import time
 import pandas as pd
 import gcsfs
 import google.auth
@@ -26,7 +28,6 @@ def initialize_gee():
     else:
         print("Orchestrator: Local environment detected.")
         service_account_path = 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json'
-        # For local gcsfs/pandas authentication
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = service_account_path
         
         service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
@@ -102,9 +103,29 @@ for asset in ensemble_assets:
 
 ensemble_asset_dict = dict(zip(ensemble_asset_names, [ASSET_FOLDER + a for a in ensemble_assets]))
 
+ANOMALY_TARGET_COLS = [
+    'Recharge', 'Runoff', 'Soil_Water_End_Of_Previous_Timestep', 
+    'Soil_Saturation_Percent_End_Of_Timestep', 'Runoff_m3', 
+    'Recharge_m3', 'Soil_Water_End_Of_Previous_Timestep_m3'
+]
+
 # ---------------------------------------------------------
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS WITH RETRY LOGIC
 # ---------------------------------------------------------
+def ee_retry_call(func, *args, max_retries=5, initial_delay=2, **kwargs):
+    """Executes an Earth Engine call with exponential backoff to recover from transient API errors."""
+    delay = initial_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if attempt == max_retries:
+                print(f"      -> 🛑 EE Call failed after {max_retries} attempts.")
+                raise e
+            print(f"      -> ⚠️ EE API glitch detected ({e}). Retrying in {delay}s (Attempt {attempt}/{max_retries})...")
+            time.sleep(delay)
+            delay *= 2
+
 def add_one_month(current_date):
     """Safely increments a date object by exactly one calendar month."""
     new_month = current_date.month % 12 + 1
@@ -112,19 +133,11 @@ def add_one_month(current_date):
     return date(new_year, new_month, 1)
 
 def convert_depth_to_volume(image):
-    """
-    Calculates volumetric (m^3) bands and appends them to the image,
-    preserving the original depth (mm) and percent bands.
-    """
+    """Calculates volumetric (m^3) bands and appends them to the image."""
     pixel_area = ee.Image.pixelArea()
-    
     depth_bands = ee.List([
-        'precip_and_snowmelt_input', 
-        'irrigation', 
-        'AET', 
-        'Runoff', 
-        'Recharge', 
-        'Soil_Water_End_Of_Previous_Timestep'
+        'precip_and_snowmelt_input', 'irrigation', 'AET', 
+        'Runoff', 'Recharge', 'Soil_Water_End_Of_Previous_Timestep'
     ])
     
     valid_depth_bands = image.bandNames().filter(ee.Filter.inList('item', depth_bands))
@@ -139,47 +152,57 @@ def convert_depth_to_volume(image):
     )
 
 def get_ee_bounds(asset_id):
-    """Returns the earliest and latest available dates in an EE ImageCollection."""
-    col = ee.ImageCollection(asset_id)
-    if col.size().getInfo() == 0:
-        return None, None
+    """Returns the earliest and latest available dates in an EE ImageCollection using retry logic."""
+    def _fetch_bounds():
+        col = ee.ImageCollection(asset_id)
+        if col.size().getInfo() == 0:
+            return None, None
+        
+        first_img = col.sort('system:time_start', True).first()
+        latest_img = col.sort('system:time_start', False).first()
+        
+        first_date = datetime.fromtimestamp(first_img.get('system:time_start').getInfo()/1000.0, tz=timezone.utc).date()
+        latest_date = datetime.fromtimestamp(latest_img.get('system:time_start').getInfo()/1000.0, tz=timezone.utc).date()
+        return first_date, latest_date
+
+    return ee_retry_call(_fetch_bounds)
+
+def manage_backups(fs, parquet_path, max_backups=3):
+    """Maintains a rolling limit of timestamped backup files."""
+    if not fs.exists(parquet_path):
+        return
+        
+    search_path = parquet_path.replace("gs://", "")
+    existing_backups = fs.glob(f"{search_path}.backup_*")
+    existing_backups.sort()
     
-    first_img = col.sort('system:time_start', True).first()
-    latest_img = col.sort('system:time_start', False).first()
-    
-    first_date = datetime.fromtimestamp(first_img.get('system:time_start').getInfo()/1000.0, tz=timezone.utc).date()
-    latest_date = datetime.fromtimestamp(latest_img.get('system:time_start').getInfo()/1000.0, tz=timezone.utc).date()
-    return first_date, latest_date
+    if len(existing_backups) >= max_backups:
+        num_to_delete = len(existing_backups) - max_backups + 1
+        for i in range(num_to_delete):
+            fs.rm(existing_backups[i])
+            print(f"      -> 🗑️ Deleted old backup: {existing_backups[i]}")
+            
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    new_backup_path = f"{parquet_path}.backup_{timestamp}"
+    fs.copy(parquet_path, new_backup_path)
+    print(f"      -> 💾 Created new backup: {new_backup_path}")
 
 # ---------------------------------------------------------
 # CORE PROCESSING LOGIC
 # ---------------------------------------------------------
 def process_region_dictionary(region_dict, dictionary_name, override_start=None, override_end=None, force_overwrite=False):
-    """
-    Loops through a dictionary of geometries, dynamically updates dates, 
-    and iterates multiple bands based on appropriate physical reducers.
-    """
     print(f"\n\n{'='*60}\nSTARTING PROCESSING TIER: {dictionary_name}\n{'='*60}")
     
     fs = gcsfs.GCSFileSystem()
     
     bands_to_reduce = {
-        'precip_and_snowmelt_input': 'mean',
-        'irrigation': 'mean',
-        'AET': 'mean',
-        'Runoff': 'mean',
-        'Recharge': 'mean',
-        'Soil_Water_End_Of_Previous_Timestep': 'mean',
-        'Soil_Saturation_Percent_End_Of_Timestep': 'mean',
-        'precip_and_snowmelt_input_m3': 'sum',
-        'irrigation_m3': 'sum',
-        'AET_m3': 'sum',
-        'Runoff_m3': 'sum',
-        'Recharge_m3': 'sum',
-        'Soil_Water_End_Of_Previous_Timestep_m3': 'sum'
+        'precip_and_snowmelt_input': 'mean', 'irrigation': 'mean', 'AET': 'mean',
+        'Runoff': 'mean', 'Recharge': 'mean', 'Soil_Water_End_Of_Previous_Timestep': 'mean',
+        'Soil_Saturation_Percent_End_Of_Timestep': 'mean', 'precip_and_snowmelt_input_m3': 'sum',
+        'irrigation_m3': 'sum', 'AET_m3': 'sum', 'Runoff_m3': 'sum',
+        'Recharge_m3': 'sum', 'Soil_Water_End_Of_Previous_Timestep_m3': 'sum'
     }
 
-    # Evaluate Overrides vs. Standard Logic
     is_override = bool(override_start and override_end)
     if is_override:
         print(f"🟡 MANUAL OVERRIDE DETECTED: Forcing processing from {override_start} to {override_end}")
@@ -198,7 +221,6 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
 
     for region_name, geometry in region_dict.items():
         print(f"\n{'='*40}\nREGION: {region_name}\n{'='*40}")
-        # parquet_path = f"{GCS_BASE_URI}/region_name={region_name}/data.parquet"
         safe_boundary_name = dictionary_name.replace(" ", "_")
         parquet_path = f"{GCS_BASE_URI}/boundary_type={safe_boundary_name}/region_name={region_name}/data.parquet"
         
@@ -212,40 +234,55 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
             for ens in df_existing['Ensemble_Member'].unique():
                 ens_df_subset = df_existing[df_existing['Ensemble_Member'] == ens]
                 existing_pq_dates[ens] = ens_df_subset['Date'].max().date()
-                # Create a set of 'YYYY-MM' strings present in the file for this ensemble
                 existing_pq_ym[ens] = set(ens_df_subset['Date'].dt.strftime('%Y-%m'))
         
         new_data_frames = []
         
-        # Iterate through each model ensemble
         for ens_name, asset_id in ensemble_asset_dict.items():
-            
             ee_first, ee_latest = get_ee_bounds(asset_id)
             if not ee_first:
                 print(f"[{ens_name}] ⚠️ EE Collection empty or missing. Skipping.")
                 continue
+
+            operational_start = date(2005, 1, 1)
+            if ee_first < operational_start:
+                ee_first = operational_start
                 
-            # Date Determination Logic
+            ens_existing_ym = existing_pq_ym.get(ens_name, set())
+
+            # DYNAMIC GAP DETECTION: Find missing months between ee_first and ee_latest
+            all_expected_months = []
+            curr = date(ee_first.year, ee_first.month, 1)
+            end_boundary = date(ee_latest.year, ee_latest.month, 1)
+            while curr <= end_boundary:
+                all_expected_months.append(curr)
+                curr = add_one_month(curr)
+
+            missing_months = [m for m in all_expected_months if m.strftime('%Y-%m') not in ens_existing_ym]
+
             if is_override:
                 start_obj = datetime.strptime(override_start, '%Y-%m-%d').date()
                 end_obj = datetime.strptime(override_end, '%Y-%m-%d').date()
-                
                 start_ym = start_obj.strftime('%Y-%m')
                 end_ym = end_obj.strftime('%Y-%m')
-                ens_existing_ym = existing_pq_ym.get(ens_name, set())
                 
-                # --- CRASH RECOVERY SMART SKIP ---
-                # If both the start and end month of the override exist, skip it (unless forced).
                 if start_ym in ens_existing_ym and end_ym in ens_existing_ym and not force_overwrite:
-                    print(f"[{ens_name}] 🟢 Override window ({start_ym} to {end_ym}) already in cache. Skipping to save resources.")
+                    print(f"[{ens_name}] 🟢 Override window ({start_ym} to {end_ym}) already in cache. Skipping.")
                     continue
 
                 process_start_str = override_start
-                # Earth Engine filters are exclusive on end_date, so we add 1 day
                 process_end_str = (end_obj + timedelta(days=1)).strftime('%Y-%m-%d')
+
+            elif missing_months:
+                # Target the earliest missing month through the latest available date
+                earliest_missing = min(missing_months)
+                process_start_date = min(earliest_missing, rewind_start) if rewind_start else earliest_missing
+                process_start_str = process_start_date.strftime('%Y-%m-%d')
+                process_end_str = add_one_month(ee_latest).strftime('%Y-%m-%d')
+                print(f"[{ens_name}] 🔍 GAP DETECTED: Missing {len(missing_months)} month(s). Fetching from {process_start_str} to {process_end_str}...")
+
             else:
                 pq_max_date = existing_pq_dates.get(ens_name)
-                
                 if pq_max_date:
                     next_needed = add_one_month(pq_max_date)
                     process_start_date = min(next_needed, rewind_start) if rewind_start else next_needed
@@ -258,49 +295,48 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
 
                 process_start_str = process_start_date.strftime('%Y-%m-%d')
                 process_end_str = add_one_month(ee_latest).strftime('%Y-%m-%d')
+                print(f"[{ens_name}] 🟡 Fetching Zonal Stats from {process_start_str} to {process_end_str}...")
             
-            print(f"[{ens_name}] 🟡 Fetching Zonal Stats from {process_start_str} to {process_end_str}...")
-            
-            # Initialize RadGEEToolbox Collection
-            ubm_col = GenericCollection(
-                collection=ee.ImageCollection(asset_id), 
-                start_date=process_start_str, 
-                end_date=process_end_str
-            )
+            # Fetch batch stats with retry protection
+            def _fetch_zonal_stats():
+                ubm_col = GenericCollection(
+                    collection=ee.ImageCollection(asset_id), 
+                    start_date=process_start_str, 
+                    end_date=process_end_str
+                )
 
-            # Prevent bug if collection is empty after date filtering
-            if ubm_col.collection.size().getInfo() == 0:
-                print(f"      -> 🛑 No images found in this date window. Skipping.")
+                if ubm_col.collection.size().getInfo() == 0:
+                    return None
+                
+                ubm_col = GenericCollection(collection=ubm_col.collection.map(convert_depth_to_volume))
+                scale = ubm_col.image_grab(0).projection().nominalScale().getInfo()
+                actual_ee_bands = ee.Image(ubm_col.collection.first()).bandNames().getInfo()
+                
+                safe_band_names = []
+                safe_reducer_names = []
+                for b, r in bands_to_reduce.items():
+                    if b in actual_ee_bands:
+                        safe_band_names.append(b)
+                        safe_reducer_names.append(r)
+                
+                return ubm_col.batch_zonal_stats(
+                    geometries=geometry, 
+                    band=safe_band_names, 
+                    scale=scale, 
+                    reducer_type=safe_reducer_names, 
+                    geometry_names=[region_name]
+                ), safe_reducer_names
+
+            fetch_result = ee_retry_call(_fetch_zonal_stats)
+            if not fetch_result or fetch_result[0] is None:
+                print(f"      -> 🛑 No images found in date window. Skipping.")
                 continue
-            
-            ubm_col = GenericCollection(collection=ubm_col.collection.map(convert_depth_to_volume))
-            scale = ubm_col.image_grab(0).projection().nominalScale().getInfo()
 
-            # DYNAMICALLY FILTER MISSING BANDS TO PREVENT EE CRASH
-            actual_ee_bands = ee.Image(ubm_col.collection.first()).bandNames().getInfo()
+            ens_df, safe_reducer_names = fetch_result
             
-            safe_band_names = []
-            safe_reducer_names = []
-            for b, r in bands_to_reduce.items():
-                if b in actual_ee_bands:
-                    safe_band_names.append(b)
-                    safe_reducer_names.append(r)
-            
-            print(f"      - Processing {len(safe_band_names)} valid bands simultaneously...")
-            
-            ens_df = ubm_col.batch_zonal_stats(
-                geometries=geometry, 
-                band=safe_band_names, 
-                scale=scale, 
-                reducer_type=safe_reducer_names, 
-                geometry_names=[region_name]
-            )
-            
-            # Clean up the output column names to perfectly match your Parquet schema
             clean_cols = {}
             for col in ens_df.columns:
                 if col == 'Date': continue
-                
                 clean_name = col.replace(f"{region_name}_", "")
                 for r in set(safe_reducer_names):
                     if clean_name.endswith(f"_{r}"):
@@ -308,7 +344,6 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
                 clean_cols[col] = clean_name
                 
             ens_df = ens_df.rename(columns=clean_cols)
-            
             ens_df['Date'] = pd.to_datetime(ens_df['Date'])
             float_cols = ens_df.select_dtypes(include=['float64']).columns
             ens_df[float_cols] = ens_df[float_cols].astype('float32')
@@ -317,45 +352,57 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
             ens_df['Region'] = region_name
             
             new_data_frames.append(ens_df)
+            
+            # Brief pause between GEE API calls to prevent rate-limiting
+            time.sleep(0.5)
 
-        # Synchronize new updates with GCS Cache
+        # Synchronize updates with GCS Cache
         if new_data_frames:
             combined_new_df = pd.concat(new_data_frames, ignore_index=True)
 
-            # Fetch existing cache and unify
             if fs.exists(parquet_path):
                 print(f"[{region_name}] 📝 Found existing cache. Fetching to unify datasets...")
                 with fs.open(parquet_path, 'rb') as f:
                     existing_df = pd.read_parquet(f, engine='pyarrow')
-                    
                 unified_df = pd.concat([existing_df, combined_new_df], ignore_index=True)
             else:
                 print(f"[{region_name}] 🚀 Initializing entirely new Parquet database...")
                 unified_df = combined_new_df
 
-            # Idempotency check: Overwrite overlapping dates with the newest calculations
             unified_df = unified_df.drop_duplicates(subset=['Date', 'Ensemble_Member'], keep='last')
 
-            # RECALCULATE ENSEMBLE MEAN (CRITICAL FIX)
+            # RECALCULATE ENSEMBLE MEAN
             print(f"[{region_name}] 📊 Recalculating Master Ensemble Mean...")
-            
-            # Drop the historical 'Ensemble_Mean' rows so they don't skew the new average
             unified_df = unified_df[unified_df['Ensemble_Member'] != 'Ensemble_Mean']
-            
-            # Group the entire historical + new dataset and calculate the true mean
             mean_df = unified_df.groupby(['Date', 'Region']).mean(numeric_only=True).reset_index()
             mean_df['Ensemble_Member'] = 'Ensemble_Mean'
-            
-            # Append the fresh mean back into the unified dataframe
             unified_df = pd.concat([unified_df, mean_df], ignore_index=True)
+
+            # CALCULATE CLIMATOLOGICAL ANOMALIES
+            print(f"[{region_name}] 🧮 Calculating Monthly Climatological Anomalies (2005-2025)...")
+            anomaly_cols = [f"{col}_anomaly" for col in ANOMALY_TARGET_COLS]
+            unified_df = unified_df.drop(columns=[col for col in anomaly_cols if col in unified_df.columns], errors='ignore')
+            
+            unified_df['Month'] = unified_df['Date'].dt.month
+            baseline_df = unified_df[(unified_df['Date'].dt.year >= 2005) & (unified_df['Date'].dt.year <= 2025)]
+            
+            baseline_means = baseline_df.groupby(['Ensemble_Member', 'Month'])[ANOMALY_TARGET_COLS].mean().reset_index()
+            mean_cols_mapping = {col: f"{col}_mean" for col in ANOMALY_TARGET_COLS}
+            baseline_means = baseline_means.rename(columns=mean_cols_mapping)
+            
+            unified_df = unified_df.merge(baseline_means, on=['Ensemble_Member', 'Month'], how='left')
+            
+            for col in ANOMALY_TARGET_COLS:
+                unified_df[f"{col}_anomaly"] = (unified_df[col] - unified_df[f"{col}_mean"]).astype('float32')
+            
+            unified_df = unified_df.drop(columns=['Month'] + list(mean_cols_mapping.values()))
 
             float_cols_to_downcast = unified_df.select_dtypes(include=['float64']).columns
             unified_df[float_cols_to_downcast] = unified_df[float_cols_to_downcast].astype('float32')
-
             unified_df['Date_Filter'] = unified_df['Date'].dt.strftime('%Y-%m-%d')
-
-            # Sort and Push to GCS
             unified_df = unified_df.sort_values(by=['Ensemble_Member', 'Date']).reset_index(drop=True)
+            
+            manage_backups(fs, parquet_path, max_backups=3)
             
             with fs.open(parquet_path, 'wb') as f:
                 unified_df.to_parquet(f, engine='pyarrow', index=False, compression='snappy')
@@ -363,7 +410,7 @@ def process_region_dictionary(region_dict, dictionary_name, override_start=None,
             print(f"[{region_name}] ✅ GCS Sync Complete.")
 
 # ---------------------------------------------------------
-# EXECUTE PIPELINE
+# EXECUTE PIPELINE WITH TRUE FAILURE EXIT CODES
 # ---------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the Zonal Stats Parquet Exporter.")
@@ -390,11 +437,12 @@ if __name__ == "__main__":
         )
 
         print("\n🎉 All processing complete. Exiting cleanly.")
-        os._exit(0)
+        sys.exit(0)
         
     except KeyboardInterrupt:
-        print("\n\n⚠️ Process interrupted by user. Safe exit triggered. No Parquet databases corrupted.")
-        os._exit(1)
+        print("\n\n⚠️ Process interrupted by user. Safe exit triggered.")
+        sys.exit(1)
     except Exception as e:
         import traceback
-        print(f"\n\n🛑 FATAL ERROR:\n{traceback.format_exc()}")
+        print(f"\n\n🛑 FATAL PIPELINE FAILURE:\n{traceback.format_exc()}")
+        sys.exit(1)  # Properly triggers Cloud Run Job failure alerts
