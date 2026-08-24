@@ -37,3 +37,5 @@ agricultural_area_delineation.ipynb
 asset_transfering.ipynb
 swb_gcp_assets.ipynb
 Asset2BucketScript/
+Cloud_Job_Zonal_Stats_Script/appending_anomalies_to_zonal_stats_files.ipynb
+Cloud_Job_Zonal_Stats_Script/ubm_cloud_zonal_stats_script copy.py

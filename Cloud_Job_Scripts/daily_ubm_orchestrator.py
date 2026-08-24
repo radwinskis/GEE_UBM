@@ -157,7 +157,7 @@ def main(high_res=False):
         print("[Sensor Check] Verifying external OpenET providers...")
         print("-"*40)
         
-        openet_ready = check_provider_ready("projects/openet/assets/disalexi/conus/gridmet/monthly/v2_1", target_start_str, target_start_next_day_str)
+        openet_ready = check_provider_ready("projects/openet/assets/geesebal/conus/gridmet/monthly/v2_1", target_start_str, target_start_next_day_str)
         print(f" -> OpenET (v2_1):    {'🟢 READY' if openet_ready else '🟡 WAITING'}")
         print("-"*40)
         
