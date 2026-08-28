@@ -195,10 +195,10 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                 model_prefix = 'Orig_UBM_'
             elif UBM_model_to_use == 'Modified_UBM_1':
                 if high_res_30m_implementation:
-                    asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_30m_v2/'
+                    asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_30m_v3/'
                     dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}_30m"
                 else:
-                    asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_v2/'
+                    asset_folder = 'projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_v3/'
                     dyn_part = f"{get_abbr(dyn_dict, snowmelt_and_precip)}_{get_abbr(dyn_dict, AET_input)}_{get_abbr(dyn_dict, irrigation)}"
                 model_prefix = 'Mod_UBM_1_'
             elif UBM_model_to_use == 'Modified_UBM_2':
@@ -432,6 +432,11 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
 
             for i in range(num_images):
                 img = ee.Image(image_list.get(i))
+                if high_res_30m_implementation:
+                    img = img.select(['Runoff', 'Recharge', 'Soil_Water_End_Of_Previous_Timestep', 'Soil_Saturation_Percent_End_Of_Timestep'])
+                else:
+                    img = img.select(['precip_and_snowmelt_input', 'irrigation', 'AET', 'Runoff', 'Recharge', 'Soil_Water_End_Of_Previous_Timestep', 'Soil_Saturation_Percent_End_Of_Timestep'])
+                img = ee.Image(img.toFloat().copyProperties(img, img.propertyNames()))
                 img_date_str = filtered_dates_list[i]
                 asset_id = f"{asset_name}/{model_prefix}{img_date_str}"
                 print(f"    - Queueing export for {img_date_str} to {asset_id}...")
