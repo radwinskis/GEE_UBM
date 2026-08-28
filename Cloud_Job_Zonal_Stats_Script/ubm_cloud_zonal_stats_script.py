@@ -40,7 +40,7 @@ initialize_gee()
 #  DEFINITIONS & DICTIONARIES
 # ---------------------------------------------------------
 GCS_BASE_URI = "gs://ugs-uswb-dev-serving/ubm_zonal_stats"
-ASSET_FOLDER = "projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_v2/"
+ASSET_FOLDER = "projects/ut-gee-ugs-uswb-dev/assets/ModifiedUBM1Runs_v3/"
 
 UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary").geometry()
 GSL_basin = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Watersheds/Merged_GSL_Basin_Watershed").geometry()
