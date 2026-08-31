@@ -220,7 +220,13 @@ def main(override_start_date=None, override_end_date=None):
             })
             
             #check if asset_name exists, if not break the loop
-            if not ee.data.getAsset(asset_name):
+            try:
+                ee.data.getAsset(asset_name)
+                asset_exists = True
+            except Exception:
+                asset_exists = False
+
+            if not asset_exists:
                 print(f" -> Asset {asset_name} does not exist. Halting queue for {model_prefix}.")
                 break
             else:
