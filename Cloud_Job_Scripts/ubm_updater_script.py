@@ -85,9 +85,9 @@ def get_processing_dates(override_start=None, override_end=None):
     
     # Start date changes depending on the execution day
     if today.day == 28:
-        print("🔄 28TH DETECTED: Executing 4-Month Rolling Rewind")
-        # Subtract 4 months from current month to get the starting month
-        new_month = today.month - 4
+        print("🔄 28TH DETECTED: Executing 6-Month Rolling Rewind")
+        # Subtract 6 months from current month to get the starting month
+        new_month = today.month - 6
         new_year = today.year
         
         # Handle year wrap-around (e.g., if we run this in Feb, go back to Oct of previous year)
@@ -176,6 +176,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
         for aet_dataset in aet_loop_list:
             AET_input = aet_dataset
             soil_moisture_input = soil_moisture_options[0] # Used for Modified_UBM_2
+            current_end_date = global_end_date
 
 
             print(f"\n{'='*60}")
@@ -236,7 +237,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                     
                     # Convert global_start_date to a date object for comparison
                     target_start_obj = datetime.strptime(global_start_date, '%Y-%m-%d').date()
-                    target_end_obj = datetime.strptime(global_end_date, '%Y-%m-%d').date()
+                    target_end_obj = datetime.strptime(current_end_date, '%Y-%m-%d').date()
 
                     if next_needed_month < target_start_obj:
                         print(f" -> MASSIVE GAP DETECTED: Asset is stuck at {latest_date.strftime('%Y-%m')}.")
@@ -275,7 +276,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
             try:
                 test_inputs = InputCollections(
                     start_date=actual_start_date, 
-                    end_date=global_end_date, 
+                    end_date=current_end_date, 
                     soil_thickness_raster=soil_thickness_raster
                 )
                 
@@ -312,11 +313,11 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
             # --------------------------------------------------------- #
             # GENERATE INPUTS & RUN MODEL
             # --------------------------------------------------------- #
-            print(f" -> Generating inputs from {actual_start_date} to {global_end_date}...")
+            print(f" -> Generating inputs from {actual_start_date} to {current_end_date}...")
 
             input_collection_wrapper = get_ubm_input_collection(
                 start_date=actual_start_date,
-                end_date=global_end_date,
+                end_date=current_end_date,
                 UBM_model_to_use=UBM_model_to_use,
                 monthly_time_step=monthly_time_step,
                 resampling_method=resampling_method,
@@ -345,13 +346,13 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                 max_available_end_date_obj = add_one_month(latest_input_date)
                 max_available_end_str = max_available_end_date_obj.strftime('%Y-%m-%d')
                 
-                target_end_obj = datetime.strptime(global_end_date, '%Y-%m-%d').date()
+                target_end_obj = datetime.strptime(current_end_date, '%Y-%m-%d').date()
                 
                 if max_available_end_date_obj <= target_end_obj:
                     print(f" -> 🛑 PROVIDER BOUNDARY DETECTED: {snowmelt_and_precip} only has data through {latest_input_date.strftime('%Y-%m')}.")
                     print(f"    Bounding processing window. Will not process past {latest_input_date.strftime('%Y-%m')}.")
                     # Safely clip the global end date to match reality
-                    global_end_date = max_available_end_str
+                    current_end_date = max_available_end_str
                 
                 # Check if the start date is now pushed past the available end date
                 start_check_obj = datetime.strptime(actual_start_date, '%Y-%m-%d').date()
@@ -368,7 +369,7 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                     model_ready_collection=input_collection_wrapper, 
                     resume_state_image=resume_state_image, 
                     start_date=actual_start_date, 
-                    end_date=global_end_date
+                    end_date=current_end_date
                 )
             elif UBM_model_to_use == 'Modified_UBM_2':
                 ubm_run = ModifiedUBM2Run(
@@ -421,13 +422,13 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
                 
                 return ee.ImageCollection(zipped.map(merge_pair))
             
-            final_collection = join_collections(input_col, output_col).filterDate(actual_start_date, global_end_date).sort('system:time_start')
+            final_collection = join_collections(input_col, output_col).filterDate(actual_start_date, current_end_date).sort('system:time_start')
             image_list = final_collection.toList(final_collection.size())
             num_images = image_list.size().getInfo()
             
             print(f" -> Queueing {num_images} targeted Upsert export tasks...")
 
-            filtered_input_col = input_col.filterDate(actual_start_date, global_end_date).sort('system:time_start')
+            filtered_input_col = input_col.filterDate(actual_start_date, current_end_date).sort('system:time_start')
             filtered_dates_list = filtered_input_col.aggregate_array('Date_Filter').getInfo()
 
             for i in range(num_images):
