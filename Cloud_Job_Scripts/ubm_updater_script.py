@@ -1,5 +1,6 @@
 import ee 
 import os
+import sys
 import google.auth
 from RadGEEToolbox import GenericCollection
 from GEE_UBM import OriginalUBMRun, ModifiedUBM1Run, ModifiedUBM2Run, check_merged_collection, InputCollections
@@ -7,6 +8,9 @@ from generate_ubm_inputs_for_update import get_ubm_input_collection, get_abbrevi
 from datetime import datetime, date, timedelta, timezone
 import calendar
 import argparse
+
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 
 #-----------------------------------------------------------#
