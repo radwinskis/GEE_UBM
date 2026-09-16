@@ -1,9 +1,13 @@
 import ee 
 import google.auth
 import os
+import sys
 from datetime import date, datetime, timedelta, timezone
 from GEE_UBM import InputCollections, SnowMeltCollection
 import calendar
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 def get_target_dates():
     """

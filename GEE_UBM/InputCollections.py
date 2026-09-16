@@ -769,8 +769,35 @@ class InputCollections:
             # https://gee-community-catalog.org/projects/prism_daily/
             # 800 m pixel size
             # Units of mm/day
-            PRISM800_daily_precip = GenericCollection(collection=ee.ImageCollection("projects/sat-io/open-datasets/OREGONSTATE/PRISM_800_DAILY").select(['ppt']), start_date=self.start_date, end_date=self.end_date)\
-                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('ppt', 'precipitation')
+            # Uses official 4km PRISM resampled via nearest-neighbor as fallback for missing community dates
+            end_date_adv = ee.Date(self.end_date).advance(1, 'day')
+            target_proj = ee.Projection('EPSG:32612').atScale(800)
+            col_800 = ee.ImageCollection("projects/sat-io/open-datasets/OREGONSTATE/PRISM_800_DAILY").select(['ppt'])
+            col_5km = ee.ImageCollection("OREGONSTATE/PRISM/ANd").select(['ppt']).filterDate(self.start_date, end_date_adv)
+            
+            def fill_precip(img_5km):
+                date_filter = img_5km.get('Date_Filter')
+                date_str = ee.Algorithms.If(
+                    date_filter,
+                    date_filter,
+                    ee.Date(img_5km.get('system:time_start')).format('YYYY-MM-dd')
+                )
+                match_800 = col_800.filterDate(ee.Date(date_str), ee.Date(date_str).advance(1, 'day'))
+                resampled_5km = img_5km.reproject(target_proj).rename('precipitation')
+                matched_800_img = match_800.first().select(['ppt']).rename('precipitation')
+                img = ee.Image(ee.Algorithms.If(
+                    match_800.size().gt(0),
+                    matched_800_img,
+                    resampled_5km
+                ))
+                return img.set({
+                    'Date_Filter': date_str,
+                    'system:time_start': img_5km.get('system:time_start')
+                })
+                
+            gapfilled_col = col_5km.map(fill_precip)
+            PRISM800_daily_precip = GenericCollection(collection=gapfilled_col, start_date=self.start_date, end_date=self.end_date)\
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary)
             return PRISM800_daily_precip
         elif name == 'DAYMET_daily_precip':
             # https://developers.google.com/earth-engine/datasets/catalog/NASA_ORNL_DAYMET_V4
@@ -838,8 +865,35 @@ class InputCollections:
             # https://gee-community-catalog.org/projects/prism_daily/
             # 800 m pixel size
             # Units of degrees Celsius
-            PRISM800_daily_temp = GenericCollection(collection=ee.ImageCollection("projects/sat-io/open-datasets/OREGONSTATE/PRISM_800_DAILY").select(['tmean']), start_date=self.start_date, end_date=self.end_date)\
-                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary).band_rename('tmean', 'temperature')
+            # Uses official 4km PRISM resampled via nearest-neighbor as fallback for missing community dates
+            end_date_adv = ee.Date(self.end_date).advance(1, 'day')
+            target_proj = ee.Projection('EPSG:32612').atScale(800)
+            col_800 = ee.ImageCollection("projects/sat-io/open-datasets/OREGONSTATE/PRISM_800_DAILY").select(['tmean'])
+            col_5km = ee.ImageCollection("OREGONSTATE/PRISM/ANd").select(['tmean']).filterDate(self.start_date, end_date_adv)
+            
+            def fill_temp(img_5km):
+                date_filter = img_5km.get('Date_Filter')
+                date_str = ee.Algorithms.If(
+                    date_filter,
+                    date_filter,
+                    ee.Date(img_5km.get('system:time_start')).format('YYYY-MM-dd')
+                )
+                match_800 = col_800.filterDate(ee.Date(date_str), ee.Date(date_str).advance(1, 'day'))
+                resampled_5km = img_5km.reproject(target_proj).rename('temperature')
+                matched_800_img = match_800.first().select(['tmean']).rename('temperature')
+                img = ee.Image(ee.Algorithms.If(
+                    match_800.size().gt(0),
+                    matched_800_img,
+                    resampled_5km
+                ))
+                return img.set({
+                    'Date_Filter': date_str,
+                    'system:time_start': img_5km.get('system:time_start')
+                })
+                
+            gapfilled_col = col_5km.map(fill_temp)
+            PRISM800_daily_temp = GenericCollection(collection=gapfilled_col, start_date=self.start_date, end_date=self.end_date)\
+                                                                                            .mask_to_polygon(self.Utah_Regional_Boundary)
             return PRISM800_daily_temp
         elif name == 'PRISM_monthly_temp':
             # https://developers.google.com/earth-engine/datasets/catalog/OREGONSTATE_PRISM_AN81m
