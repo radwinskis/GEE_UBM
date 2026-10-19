@@ -52,3 +52,5 @@ basin_lithology_stats_for_validation.ipynb
 creation_of_elevation_based_GeoK_scalar.ipynb
 creation_of_lithology_based_soilthickness_scalar.ipynb
 UT_Irrigation_Raster_Creation.ipynb
+GEE_UBM/ModifiedUBM2.py
+GEE_UBM/OriginalUBM.py
