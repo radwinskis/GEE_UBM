@@ -1,8 +1,0 @@
-earthengine-api
-google-auth
-numpy
-RadGEEToolbox
-GEE-UBM
-gcsfs
-pandas == 2.3.3
-pyarrow

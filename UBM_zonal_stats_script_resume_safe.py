@@ -55,9 +55,8 @@ def convert_depth_to_volume(image):
 #------------------------------------------------------#
 ############## INITIALIZE EARTH ENGINE #################
 #------------------------------------------------------#
-service_account = 'localpythonscripts@ut-gee-ugs-bsf-dev.iam.gserviceaccount.com'
-credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-bsf-dev-53dcc5d729e0.json')
-ee.Initialize(credentials=credentials)
+ee.Authenticate()
+ee.Initialize()
 
 ####### STATIC DEFINITIONS #######
 UT_boundary = ee.FeatureCollection("projects/ut-gee-ugs-bsf-dev/assets/Utah_Regional_Boundary").geometry()
