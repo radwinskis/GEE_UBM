@@ -5,6 +5,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from GEE_UBM import InputCollections, SnowMeltCollection
 import calendar
+import json
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -81,17 +82,31 @@ def main(override_start_date=None, override_end_date=None):
         5. If gap == 1 month, generates an optimized single-month ee.ImageCollection sum export.
     """
     if os.environ.get('CLOUD_RUN_JOB'):
-        print("Detected Cloud Run environment. Using default credentials.")
+        print("Orchestrator: Cloud Run environment detected.")
         credentials, project = google.auth.default(
             scopes=['https://www.googleapis.com/auth/earthengine', 
                     'https://www.googleapis.com/auth/cloud-platform']
         )
-        ee.Initialize(credentials, project='ut-gee-ugs-uswb-dev')
+        project_id = os.environ.get('EE_PROJECT_ID', project)
+        ee.Initialize(credentials, project=project_id)
     else:
-        print("Detected local environment. Using JSON service account key.")
-        service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
-        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json')
-        ee.Initialize(credentials=credentials)
+        print("Orchestrator: Local environment detected.")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(script_dir)
+        config_path = os.path.join(repo_root, 'local_config.json')
+
+        # Changed from config_path.exists() to os.path.exists()
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Config file not found at: {config_path}")
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        credentials = ee.ServiceAccountCredentials(
+            config['service_account'], 
+            config['key_path']
+        )
+        ee.Initialize(credentials=credentials, project=config.get('project_id'))
 
     boundary = ee.FeatureCollection("projects/ut-gee-ugs-uswb-dev/assets/Utah_Regional_Boundary").geometry()
     

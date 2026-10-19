@@ -1,5 +1,6 @@
 import ee
 import os
+import json
 import google.auth
 from datetime import date, datetime, timedelta, timezone
 
@@ -19,19 +20,33 @@ def add_one_month(current_date):
     return date(new_year, new_month, 1)
 
 def main():
-    # Check if we are running inside Google Cloud Run
+
     if os.environ.get('CLOUD_RUN_JOB'):
-        print("Detected Cloud Run environment. Using default credentials.")
+        print("Orchestrator: Cloud Run environment detected.")
         credentials, project = google.auth.default(
             scopes=['https://www.googleapis.com/auth/earthengine', 
                     'https://www.googleapis.com/auth/cloud-platform']
         )
-        ee.Initialize(credentials, project='ut-gee-ugs-uswb-dev')
+        project_id = os.environ.get('EE_PROJECT_ID', project)
+        ee.Initialize(credentials, project=project_id)
     else:
-        print("Detected local environment. Using JSON service account key.")
-        service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
-        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json')
-        ee.Initialize(credentials=credentials)
+        print("Orchestrator: Local environment detected.")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(script_dir)
+        config_path = os.path.join(repo_root, 'local_config.json')
+
+        # Changed from config_path.exists() to os.path.exists()
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Config file not found at: {config_path}")
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        credentials = ee.ServiceAccountCredentials(
+            config['service_account'], 
+            config['key_path']
+        )
+        ee.Initialize(credentials=credentials, project=config.get('project_id'))
     
     
     collection_path = "projects/ut-gee-ugs-uswb-dev/assets/UT_Monthly_Scaled_Irrigation_Depth_Collection_mm_30m_v2"

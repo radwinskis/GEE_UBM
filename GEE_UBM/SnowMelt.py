@@ -48,7 +48,7 @@ class SnowMeltCollection:
         # We look for an image where time_diff is within 25 hours, 
         # AND the match is strictly earlier than the source.
         max_diff_filter = ee.Filter.maxDifference(
-            # difference=25 * 60 * 60 * 1000, # 25 hours (in millis)
+
             difference=72 * 60 * 60 * 1000, # 72 hours (in millis)
             leftField='system:time_start',
             rightField='system:time_start'
@@ -189,27 +189,9 @@ class SnowMeltCollection:
 
             rain_img = rain_img.resample('bilinear').reproject(target_proj)
             
-            # native_scale = ee.Number(delta_img_native.projection().nominalScale())
-            # is_finer = native_scale.lt(reference_scale)
-
-            # # SNODAS: reduce only if finer than precip scale; else upsample
-            # delta_img = ee.Image(ee.Algorithms.If(
-            #     is_finer,
-            #     delta_img_native.reduceResolution(
-            #         reducer=ee.Reducer.mean(), maxPixels=65536),
-            #     delta_img_native.resample('bilinear')
-            # )).reproject(target_proj)
-            
-            # delta = delta_img.select('delta_swe')
             rain = rain_img #.select('rain')
             
             # --- Melt Calculation ---
-            # If Delta < 0: Melt + Sublimation occurred.
-            # Melt = |Delta| * 0.9 (assuming 10% sublimation)
-            # If Delta > 0: Accumulation. Melt = 0.
-            
-            # melt = delta.where(delta.gt(0), 0).abs().multiply(0.9)
-
             melt = melt_native.reduceResolution(
                 reducer=ee.Reducer.mean(), maxPixels=65536
             ).reproject(target_proj) #.select('delta_swe')

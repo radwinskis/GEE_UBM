@@ -1,5 +1,6 @@
 import ee 
 import os
+import json
 import sys
 import google.auth
 from RadGEEToolbox import GenericCollection
@@ -115,17 +116,31 @@ def main(high_res_implementation=False, start_date=None, end_date=None, aet_subs
     ############## INITIALIZE EARTH ENGINE #################
     #------------------------------------------------------#
     if os.environ.get('CLOUD_RUN_JOB'):
-        print("Detected Cloud Run environment. Using default credentials.")
+        print("Orchestrator: Cloud Run environment detected.")
         credentials, project = google.auth.default(
             scopes=['https://www.googleapis.com/auth/earthengine', 
                     'https://www.googleapis.com/auth/cloud-platform']
         )
-        ee.Initialize(credentials, project='ut-gee-ugs-uswb-dev')
+        project_id = os.environ.get('EE_PROJECT_ID', project)
+        ee.Initialize(credentials, project=project_id)
     else:
-        print("Detected local environment. Using JSON service account key.")
-        service_account = 'ubm-swb@ut-gee-ugs-uswb-dev.iam.gserviceaccount.com'
-        credentials = ee.ServiceAccountCredentials(service_account, 'C:\\Users\\mradwin\\ut-gee-ugs-uswb-dev-77ffc61a8874.json')
-        ee.Initialize(credentials=credentials)
+        print("Orchestrator: Local environment detected.")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(script_dir)
+        config_path = os.path.join(repo_root, 'local_config.json')
+
+        # Changed from config_path.exists() to os.path.exists()
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Config file not found at: {config_path}")
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        credentials = ee.ServiceAccountCredentials(
+            config['service_account'], 
+            config['key_path']
+        )
+        ee.Initialize(credentials=credentials, project=config.get('project_id'))
 
     global_start_date, global_end_date = get_processing_dates(start_date, end_date)
 
