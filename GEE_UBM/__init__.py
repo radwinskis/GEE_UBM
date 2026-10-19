@@ -13,9 +13,7 @@ from .helpers import (
 )
 
 # Expose the Model Runners
-from .OriginalUBM import OriginalUBMRun
 from .ModifiedUBM1 import ModifiedUBM1Run
-from .ModifiedUBM2 import ModifiedUBM2Run
 
 # Define what gets imported with "from GEE_UBM import *"
 __all__ = [
@@ -29,4 +27,4 @@ __all__ = [
     "SnowMeltCollection"
 ]
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"

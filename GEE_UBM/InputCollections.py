@@ -98,42 +98,6 @@ class InputCollections:
         soil_thickness_raster (ee.Image): Raster image representing soil thickness in mm.
     
     """
-    # target_proj = ee.Projection('EPSG:32612').atScale(1000)
-
-    # @classmethod
-    # def _to_1km_focal(cls, img, work_proj=None, radius=500):
-    #     target_proj = ee.Projection('EPSG:32612').atScale(1000)
-    #     # work_proj: fine-scale metric grid to run the kernel on
-    #     # if work_proj is None:
-    #     #     # Force UTM 12N at the image's native scale
-    #     #     native_scale = img.projection().nominalScale()
-    #     #     wp = ee.Projection('EPSG:32612').atScale(native_scale)
-    #     # else: 
-    #     #     native_scale = work_proj.nominalScale()
-    #     #     wp = ee.Projection('EPSG:32612').atScale(native_scale)
-    #     # img_fine = img.reproject(wp)
-    #     wp = work_proj or img.projection()
-    #     img_fine = img.setDefaultProjection(wp)
-    #     agg = img_fine.focal_mean(radius=radius, kernelType='square', units='meters')
-    #     return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
-    # @classmethod
-    # def _to_1km_reduceResolution(cls, img, work_proj=None):
-    #     target_proj = ee.Projection('EPSG:32612').atScale(1000)
-    #     # work_proj: fine-scale metric grid to run the kernel on
-    #     wp = work_proj or img.projection()
-    #     # img_fine = img.reproject(wp)
-    #     img_fine = img.setDefaultProjection(wp)
-    #     agg = img_fine.reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)
-    #     return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
-    # @classmethod
-    # def _to_1km_bilinear(cls, img, work_proj=None):
-    #     target_proj = ee.Projection('EPSG:32612').atScale(1000)
-    #     # work_proj: fine-scale metric grid to run the kernel on
-    #     wp = work_proj or img.projection()
-    #     # img_fine = img.reproject(wp)
-    #     img_fine = img.setDefaultProjection(wp)
-    #     agg = img_fine.resample('bilinear')
-    #     return agg.reproject(target_proj).set('system:time_start', img.get('system:time_start'))
 
     _shapefiles = None
     
@@ -189,18 +153,12 @@ class InputCollections:
         if name == 'ISRIC':
             image = ee.Image("projects/ut-gee-ugs-uswb-dev/assets/UT_regional_soil_depth_to_bedrock_cm_ISRIC")
             native_proj = image.projection()
-            # image = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000)
             image = image.reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
                                 .reproject(target_proj)
             return image.multiply(ee.Image(10)).clip(Utah_Regional_Boundary).rename('soil_thickness')
         elif name == 'gNATSGO':
             col = ee.ImageCollection('projects/sat-io/open-datasets/gNATSGO/raster/tk0_999a')
             native_proj = col.first().projection()
-            # col = col.mosaic().setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000)
-            # col = col.mosaic().setDefaultProjection(native_proj).resample('bilinear')\
-            #                     .reproject(crs=native_proj, scale=1000)
             col = col.mosaic()
             col = self._resample_focal(col, work_proj=native_proj)
             return col.multiply(ee.Image(10)).clip(Utah_Regional_Boundary).rename('soil_thickness')
@@ -219,15 +177,15 @@ class InputCollections:
             return filled_image.rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_30m':
             st_scalar_asset = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_30m')
-            # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+
             return ee.Image('projects/ut-gee-ugs-uswb-dev/assets/UT_RandomForest_30m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_800m':
             st_scalar_asset = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_800m')
-            # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_800m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+
             return ee.Image('projects/ut-gee-ugs-uswb-dev/assets/UT_RandomForest_800m_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
         elif name == 'Random_Forest_Utah_Model_1km':
             st_scalar_asset = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_USGS_NGMD_Geomaterials_ST_Scalar_1000m')
-            # return ee.Image('projects/ut-gee-ugs-bsf-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').rename('soil_thickness')
+
             return ee.Image('projects/ut-gee-ugs-uswb-dev/assets/UT_RandomForest_1km_gNATSGO_soil_thickness_imperviousIncluded_prediction_raster_final').multiply(st_scalar_asset).rename('soil_thickness')
             
         else:
@@ -240,7 +198,7 @@ class InputCollections:
         self.target_scale = target_scale
         self.target_proj = ee.Projection('EPSG:32612').atScale(self.target_scale)
         if soil_thickness_raster is None:
-            # self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_1km')
+
             if target_scale == 30:
                 self.soil_thickness_raster = self._get_soil_thickness_raster('Random_Forest_Utah_Model_30m')
             elif target_scale == 800:
@@ -305,16 +263,6 @@ class InputCollections:
         if name == 'UGS_porosity':
             image = ee.Image("users/paulinkenbrandt/porosity")
             native_proj = image.projection()
-            # if self.resampling_method == 'bilinear':
-            #     image = self._to_1km_bilinear(image, work_proj=native_proj)
-            # elif self.resampling_method == 'focal_mean':
-            #     image = self._to_1km_focal(image, work_proj=native_proj)
-            # elif self.resampling_method == 'reduceResolution':
-            #     image = self._to_1km_reduceResolution(image, work_proj=native_proj)
-
-            # image = image.setDefaultProjection(native_proj)\
-            #          .reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #          .reproject(crs=native_proj, scale=1000)
 
             if self.resampling_method == 'bilinear':
                 image = self._resample_bilinear(image, work_proj=native_proj)
@@ -334,12 +282,7 @@ class InputCollections:
             col = HiHydroSoilPorosity = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcsat")
             native_proj = col.first().projection()
             HiHydroSoilPorosity = col.mean().multiply(0.0001)
-            # if self.resampling_method == 'bilinear':
-            #     HiHydroSoilPorosity = self._to_1km_bilinear(HiHydroSoilPorosity, work_proj=native_proj)
-            # elif self.resampling_method == 'focal_mean':
-            #     HiHydroSoilPorosity = self._to_1km_focal(HiHydroSoilPorosity, work_proj=native_proj)
-            # elif self.resampling_method == 'reduceResolution':
-            #     HiHydroSoilPorosity = self._to_1km_reduceResolution(HiHydroSoilPorosity, work_proj=native_proj)
+
             if self.resampling_method == 'bilinear':
                 HiHydroSoilPorosity = self._resample_bilinear(HiHydroSoilPorosity, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -349,8 +292,6 @@ class InputCollections:
             elif self.resampling_method == 'nearest_neighbor':
                 HiHydroSoilPorosity = self._resample_near(HiHydroSoilPorosity, work_proj=native_proj)
             HiHydroSoilPorosity = HiHydroSoilPorosity.unmask(0.5).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
-            # HiHydroSoilPorosity = col.mean().multiply(0.0001).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                         .reproject(crs=native_proj, scale=1000).unmask(0.5).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
             return HiHydroSoilPorosity
         elif name == 'POLARIS_porosity':
             # https://gee-community-catalog.org/projects/polaris/
@@ -358,14 +299,7 @@ class InputCollections:
             # Units = m3/m3 or %
             col = ee.ImageCollection('projects/sat-io/open-datasets/polaris/theta_s_mean')
             native_proj = col.first().projection()
-            # POLARIS_porosity = col.mean().setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('soil_porosity')
-            # if self.resampling_method == 'bilinear':
-            #     POLARIS_porosity = self._to_1km_bilinear(col.mean(), work_proj=native_proj)
-            # elif self.resampling_method == 'focal_mean':
-            #     POLARIS_porosity = self._to_1km_focal(col.mean(), work_proj=native_proj)
-            # elif self.resampling_method == 'reduceResolution':
-            #     POLARIS_porosity = self._to_1km_reduceResolution(col.mean(), work_proj=native_proj)
+
             if self.resampling_method == 'bilinear':
                 POLARIS_porosity = self._resample_bilinear(col.mean(), work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -381,8 +315,7 @@ class InputCollections:
             # Converted to mm of water
             image = ee.Image("users/paulinkenbrandt/fieldCap")
             native_proj = image.projection()
-            # UGS_fieldCap = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
+
             if self.resampling_method == 'bilinear':
                 UGS_fieldCap = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -401,8 +334,7 @@ class InputCollections:
             # Converted to mm of water by multipying against soil thickness
             col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcpf2")
             native_proj = col.first().projection()
-            # HiHydroSoilFieldCap = col.mean().multiply(0.0001).setDefaultProjection(native_proj).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
+           
             HiHydroSoilFieldCap = col.mean().multiply(0.0001)
             if self.resampling_method == 'bilinear':
                 HiHydroSoilFieldCap = self._resample_bilinear(HiHydroSoilFieldCap, work_proj=native_proj)
@@ -422,9 +354,6 @@ class InputCollections:
             # converting to mm of water by multiplying against soil thickness
             col = ee.Image('OpenLandMap/SOL/SOL_WATERCONTENT-33KPA_USDA-4B1C_M/v01')
             native_proj = col.projection()
-            # OpenLandMapFieldCap = col.expression('(b("b0")+b("b10")+b("b30")+b("b60")+b("b100")+b("b200"))/6').divide(100)\
-            #     .setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('field_capacity')
             OpenLandMapFieldCap = col.expression('(b("b0")+b("b10")+b("b30")+b("b60")+b("b100")+b("b200"))/6').divide(100)
             if self.resampling_method == 'bilinear':
                 OpenLandMapFieldCap = self._resample_bilinear(OpenLandMapFieldCap, work_proj=native_proj)
@@ -440,8 +369,7 @@ class InputCollections:
             # Assuming original units of m/day, converted to mm/day
             image = ee.Image("users/paulinkenbrandt/BMC_K")
             native_proj = image.projection()
-            # UGS_BMC_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
+
             if self.resampling_method == 'bilinear':
                 UGS_BMC_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -479,8 +407,6 @@ class InputCollections:
             # Assuming original units of m/day, converted to mm/day
             image = ee.Image("users/paulinkenbrandt/Geol_K")
             native_proj = image.projection()
-            # UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
             if self.resampling_method == 'bilinear':
                 UGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -495,8 +421,7 @@ class InputCollections:
             # Assuming original units of m/day, converted to mm/day
             image = ee.Image("users/paulinkenbrandt/Geol_K")
             native_proj = image.projection()
-            # UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).max(ee.Image(0)).rename('Geo_K')
+
             if self.resampling_method == 'bilinear':
                 UGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -511,8 +436,7 @@ class InputCollections:
             # Assuming original units of m/day, converted to mm/day
             image = ee.Image("users/paulinkenbrandt/Geol_K")
             native_proj = image.projection()
-            # UGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(ee.Image(1000)).multiply(ee.Image(30.4375)).max(ee.Image(0)).rename('Geo_K')
+
             if self.resampling_method == 'bilinear':
                 UGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -528,8 +452,7 @@ class InputCollections:
             # from https://www.sciencebase.gov/catalog/item/552c4877e4b0b22a157f5061
             image = ee.Image("projects/ut-gee-ugs-uswb-dev/assets/USGS_GeoK_Utah_Clipped_mm_month")
             native_proj = image.projection()
-            # USGS_Geo_K = image.setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).max(ee.Image(0)).rename('Geo_K')
+            
             if self.resampling_method == 'bilinear':
                 USGS_Geo_K = self._resample_bilinear(image, work_proj=native_proj)
             elif self.resampling_method == 'focal_mean':
@@ -551,8 +474,7 @@ class InputCollections:
             converted_col = col.map(unlog_and_convert)
 
             # 2. Reduce the collection to find the minimum pixel value across all depths
-            # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
+
             POLARIS_ksat = converted_col.min()
             if self.resampling_method == 'bilinear':
                 POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
@@ -575,8 +497,6 @@ class InputCollections:
             converted_col = col.map(unlog_and_convert)
 
             # 2. Reduce the collection to find the minimum pixel value across all depths
-            # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
             scalar_image = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_KSat_Scalar_1000m')
             POLARIS_ksat = converted_col.min().multiply(scalar_image)
             if self.resampling_method == 'bilinear':
@@ -600,8 +520,6 @@ class InputCollections:
             converted_col = col.map(unlog_and_convert)
 
             # 2. Reduce the collection to find the minimum pixel value across all depths
-            # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
             POLARIS_ksat = converted_col.min()
             if self.resampling_method == 'bilinear':
                 POLARIS_ksat = self._resample_bilinear(POLARIS_ksat, work_proj=native_proj)
@@ -624,8 +542,6 @@ class InputCollections:
             converted_col = col.map(unlog_and_convert)
 
             # 2. Reduce the collection to find the minimum pixel value across all depths
-            # POLARIS_ksat = converted_col.min().setDefaultProjection(native_proj).resample('bilinear')\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).rename('Geo_K')
             scalar_image = ee.Image('projects/ut-gee-ugs-uswb-dev/assets/Utah_KSat_Scalar_1000m')
             POLARIS_ksat = converted_col.min().multiply(scalar_image)
             if self.resampling_method == 'bilinear':
@@ -720,8 +636,7 @@ class InputCollections:
             # Converted to mm of water by multipying against soil thickness
             col = ee.ImageCollection("projects/sat-io/open-datasets/HiHydroSoilv2_0/wcpf4-2")
             native_proj = col.first().projection()
-            # HiHydroSoilWiltPoint = col.mean().multiply(0.0001).setDefaultProjection(native_proj).reduceResolution(reducer=ee.Reducer.mean(), maxPixels=65536)\
-            #                     .reproject(crs=native_proj, scale=1000).clip(self.Utah_Regional_Boundary).multiply(self.soil_thickness_raster).rename('wilting_point')
+
             HiHydroSoilWiltPoint = col.mean().multiply(0.0001)
             if self.resampling_method == 'bilinear':
                 HiHydroSoilWiltPoint = self._resample_bilinear(HiHydroSoilWiltPoint, work_proj=native_proj)

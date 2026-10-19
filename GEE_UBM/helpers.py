@@ -28,9 +28,7 @@ def harmonize_to_target(source_image, target_proj, downsample_method='focal_mean
     else:
         raise ValueError("Invalid downsample_method. Choose 'focal_mean', 'reduceResolution', or 'nearest_neighbor'.")
     
-    # interpolated = source_image.resample('bilinear').reproject(
-    #     crs=target_proj
-    # )
+
     interpolated = ee.Image(ee.Algorithms.If(
         ee.Number(target_scale).eq(30),
         source_image.reproject(crs=target_proj),
@@ -86,9 +84,6 @@ def build_model_ready_collection(timeseries_collections_list, static_images_list
     # Determine the coarsest scale and its index
     max_scale = scales.reduce(ee.Reducer.max())
     # Get the index of the coarsest scale in the scales list (to find corresponding projection)
-    # max_index = scales.indexOf(max_scale)
-    # # Get the target projection (coarsest)
-    # target_proj = ee.Projection(projections.get(max_index)) # Master grid
 
     if target_scale:
         ts = ee.Algorithms.If(ee.Number(target_scale).gt(0), target_scale, max_scale)
